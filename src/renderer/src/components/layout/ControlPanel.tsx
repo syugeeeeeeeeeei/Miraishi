@@ -1,13 +1,4 @@
-import {
-  VStack,
-  Text,
-  Flex,
-  IconButton,
-  Button,
-  ButtonProps,
-  Box,
-  HStack
-} from '@chakra-ui/react'
+import { VStack, Text, Flex, IconButton, Button, ButtonProps, Box, HStack } from '@chakra-ui/react'
 import { RxPencil2, RxHamburgerMenu } from 'react-icons/rx'
 import { GoGear, GoSearch } from 'react-icons/go'
 import React from 'react'
@@ -23,7 +14,7 @@ interface ExpandingTextButtonProps extends ButtonProps {
   icon?: React.JSX.Element
 }
 
-const ExpandingTextButton: React.FC<ExpandingTextButtonProps> = ({
+const ExpandingButton: React.FC<ExpandingTextButtonProps> = ({
   isExpanded,
   children,
   icon,
@@ -46,16 +37,12 @@ const ExpandingTextButton: React.FC<ExpandingTextButtonProps> = ({
       }}
     >
       <HStack w={'100%'} justifyContent={'flex-start'}>
-        <IconButton bg={"inherit"} size={'lg'}>
+        <IconButton bg={'inherit'} size={'lg'}>
           {icon}
         </IconButton>
         {isExpanded && (
-          <Box>
-            {children ??
-              <Text as="span" ml={3}>
-                {children}
-              </Text>
-            }
+          <Box as="span" ml={3} textWrap={'nowrap'}>
+            {children}
           </Box>
         )}
       </HStack>
@@ -83,35 +70,27 @@ export function ControlPanel({
       {/* --- ヘッダー --- */}
       <Flex direction="column" gap={4}>
         <HStack minH="40px" justifyContent="space-between">
-          <ExpandingTextButton
+          <ExpandingButton
             isExpanded={false}
             onClick={onToggle}
             bg={'app.accent'}
             icon={<RxHamburgerMenu size={'1.2em'} />}
           />
           {isExpanded && (
-            <ExpandingTextButton
+            <ExpandingButton
               isExpanded={false}
               bg={'app.accent'}
               icon={<GoSearch size={'1.2em'} />}
             />
           )}
         </HStack>
-        <ExpandingTextButton
+        <ExpandingButton
           isExpanded={isExpanded}
           icon={<RxPencil2 size={'1.2em'} />}
           bg={'app.accent'}
         >
           新規作成
-        </ExpandingTextButton>
-        {/*<Button {...ButtonStyles}>*/}
-        {/*  <RxPencil2 size="20px" />*/}
-        {/*  {isExpanded && (*/}
-        {/*    <Text as="span" ml={3}>*/}
-        {/*      新規作成*/}
-        {/*    </Text>*/}
-        {/*  )}*/}
-        {/*</Button>*/}
+        </ExpandingButton>
       </Flex>
 
       {/* --- シナリオリスト (ボディ) --- */}
@@ -124,13 +103,9 @@ export function ControlPanel({
 
       {/* --- フッター --- */}
       <VStack align="stretch" pt={4}>
-        <ExpandingTextButton
-          isExpanded={isExpanded}
-          icon={<GoGear size="1.2em" />}
-          bg={'app.accent'}
-        >
+        <ExpandingButton isExpanded={isExpanded} icon={<GoGear size="1.2em" />} bg={'app.accent'}>
           設定
-        </ExpandingTextButton>
+        </ExpandingButton>
       </VStack>
     </Flex>
   )
