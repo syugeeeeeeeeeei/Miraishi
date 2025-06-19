@@ -1,5 +1,4 @@
 import { defineConfig, SystemConfig } from '@chakra-ui/react'
-
 const theme: SystemConfig = {
   theme: {
     // --- STEP 1: アプリで使うカラーパレットを`tokens`に定義 ---
@@ -11,7 +10,11 @@ const theme: SystemConfig = {
           teal: { value: '#00A3A3' },
           tealLight: { value: '#48D1CC' },
           cardBg: { value: '#f5f1eb' },
-          deepBg: { value: '#d5b589' }
+          deepBg: { value: '#d5bca4' }
+        },
+        fonts: {
+          body: { value: "Georgia, sans-serif" },
+          heading: { value: "'Zen Maru Gothic', sans-serif" }
         },
         neutral: {
           darkGray: { value: '#4A4A4A' },
@@ -24,7 +27,7 @@ const theme: SystemConfig = {
     semanticTokens: {
       colors: {
         'app.background': {
-          value: { base: '{colors.brand.cardBg}' } // `base`はライトモード
+          value: { base: '{white}' } // `base`はライトモード
         },
         'component.background': {
           value: { base: '{colors.brand.deepBg}' }
@@ -59,7 +62,8 @@ const theme: SystemConfig = {
     body: {
       // 直接的な色指定ではなく、役割で指定する
       bg: 'app.background',
-      color: 'app.text.primary'
+      color: 'app.text.primary',
+      fontFamily: 'body'
     }
   }
 }

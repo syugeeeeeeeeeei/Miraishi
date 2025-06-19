@@ -934,6 +934,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@fontsource/zen-maru-gothic@npm:^5.2.6":
+  version: 5.2.6
+  resolution: "@fontsource/zen-maru-gothic@npm:5.2.6"
+  checksum: 10c0/b54e7a7769b420168674d9fbbfedfafa1381e29a0a979ade9ad60e046dbb4a120be9707c94af74f6d15d14b574ebccc95ea477775d3e56d50cacedac4e106111
+  languageName: node
+  linkType: hard
+
 "@gar/promisify@npm:^1.1.3":
   version: 1.1.3
   resolution: "@gar/promisify@npm:1.1.3"
@@ -6287,6 +6294,7 @@ __metadata:
     "@electron-toolkit/utils": "npm:^4.0.0"
     "@emotion/react": "npm:^11.14.0"
     "@emotion/styled": "npm:^11.14.0"
+    "@fontsource/zen-maru-gothic": "npm:^5.2.6"
     "@types/node": "npm:^22.14.1"
     "@types/react": "npm:^19.1.1"
     "@types/react-dom": "npm:^19.1.2"

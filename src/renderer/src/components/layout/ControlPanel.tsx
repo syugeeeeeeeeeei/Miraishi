@@ -21,9 +21,6 @@ export function ControlPanel({
       w={`${width}px`} // 親から渡された幅を適用
       h="100vh"
       bg="component.background"
-      // border="solid 2px"
-      borderRight={"md"}
-      borderColor="component.border"
       p={3}
       transition="width 0.25s ease" // widthの変化をアニメーションさせる
       flexShrink={0}
@@ -33,17 +30,23 @@ export function ControlPanel({
       {/* --- ヘッダー --- */}
       <Flex direction="column" gap={4}>
         <Flex minH="40px" align="center">
-          <IconButton aria-label="Toggle Panel" bg={"app.accent"} variant="solid" onClick={onToggle} size="lg">
+          <IconButton
+            aria-label="Toggle Panel"
+            bg={'app.accent'}
+            variant="solid"
+            onClick={onToggle}
+            size="lg"
+          >
             <GiHamburgerMenu />
           </IconButton>
           {isExpanded && (
-            <IconButton ml="auto" aria-label="Search" bg={"app.accent"} variant="solid" size="lg">
+            <IconButton ml="auto" aria-label="Search" bg={'app.accent'} variant="solid" size="lg">
               <GoSearch />
             </IconButton>
           )}
         </Flex>
 
-        <Button justifyContent={'flex-start'} bg={"app.accent"} variant="solid" size="lg" p={3}>
+        <Button justifyContent={'flex-start'} bg={'app.accent'} variant="solid" size="lg" p={3}>
           <GoPencil size="1.2em" />
           {isExpanded && (
             <Text as="span" ml={4}>
@@ -63,7 +66,7 @@ export function ControlPanel({
 
       {/* --- フッター --- */}
       <VStack align="stretch" pt={4}>
-        <Button justifyContent="flex-start" bg={"app.accent"} variant="solid" size="lg" p={3}>
+        <Button justifyContent="flex-start" bg={'app.accent'} variant="solid" size="lg" p={3}>
           <GoGear size="1.2em" />
           {isExpanded && (
             <Text as="span" ml={4}>

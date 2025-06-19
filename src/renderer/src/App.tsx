@@ -1,7 +1,8 @@
 import { ChakraProvider, createSystem, defaultConfig, Box, Text } from '@chakra-ui/react'
 import { config } from './theme'
 import { AppLayout } from './components/layout/AppLayout'
-import React from 'react' // ★ 作成したAppLayoutをインポート
+import React from 'react'
+import '@fontsource/zen-maru-gothic/index.css'
 
 // デフォルト設定と独自の設定をマージしてシステムを生成
 const system = createSystem(defaultConfig, config)

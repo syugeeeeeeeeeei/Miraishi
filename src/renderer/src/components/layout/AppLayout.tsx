@@ -1,4 +1,4 @@
-import { Box, Flex } from '@chakra-ui/react'
+import { Box, Flex, Text } from '@chakra-ui/react'
 import { ControlPanel } from './ControlPanel'
 import React, { useState } from 'react'
 
@@ -37,7 +37,9 @@ export function AppLayout({ children }: AppLayoutProps): React.JSX.Element {
           borderBottom="1px"
           borderColor="component.border"
         >
-          {/* メインコンテンツ側のヘッダー要素はここに配置 */}
+          <Text fontSize={'3xl'} color={'app.text.primary'} fontWeight={'bold'}>
+            Miraishi
+          </Text>
         </Flex>
 
         {/* メインの表示領域 */}
