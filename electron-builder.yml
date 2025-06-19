@@ -13,7 +13,7 @@ asarUnpack:
   - resources/**
 win:
   executableName: Miraishi
-  icon: "./resources/icon.png"
+  icon: './resources/icon.png'
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
