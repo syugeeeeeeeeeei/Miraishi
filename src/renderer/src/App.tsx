@@ -1,18 +1,16 @@
-import { ChakraProvider, createSystem, defaultConfig, Box, Text } from '@chakra-ui/react'
-import { config } from './theme'
+import { ChakraProvider, Box, Text } from '@chakra-ui/react'
+import { system } from './theme'
 import { AppLayout } from './components/layout/AppLayout'
 import React from 'react'
-import '@fontsource/zen-maru-gothic/index.css'
-
-// デフォルト設定と独自の設定をマージしてシステムを生成
-const system = createSystem(defaultConfig, config)
+import '@fontsource/zen-maru-gothic/400.css'
+import '@fontsource/zen-maru-gothic/700.css'
 
 // アプリケーションのメインコンテンツ部分
 function MainContent(): React.JSX.Element {
   return (
     // ★ AppLayoutでコンテンツを囲む
     <AppLayout>
-      <Box>
+      <Box fontFamily={"'Zen Maru Gothic', sans-serif"}>
         <Text fontSize="xl" fontWeight="bold">
           メインパネル
         </Text>

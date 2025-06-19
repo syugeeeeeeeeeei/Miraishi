@@ -42,6 +42,7 @@
     "zod": "^3.25.67"
   },
   "devDependencies": {
+    "@chakra-ui/cli": "^3.21.0",
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
     "@electron-toolkit/eslint-config-ts": "^3.0.0",
     "@electron-toolkit/tsconfig": "^1.0.1",
