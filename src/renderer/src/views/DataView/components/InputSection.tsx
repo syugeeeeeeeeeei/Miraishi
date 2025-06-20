@@ -1,106 +1,115 @@
 import {
   Box,
   Button,
-  FormControl,
-  FormLabel,
+  createListCollection,
+  Field,
   HStack,
   IconButton,
   Input,
-  NumberDecrementStepper,
-  NumberIncrementStepper,
   NumberInput,
-  NumberInputField,
-  NumberInputStepper,
   Select,
   Stack,
-  Text,
+  Text
 } from '@chakra-ui/react'
-import { AddIcon, DeleteIcon } from '@chakra-ui/icons'
+// react-iconsをインポート
+import { IoAdd, IoTrash } from 'react-icons/io5'
 import { useAtom } from 'jotai'
-import { activeScenarioAtom } from '../../atoms/scenarioAtoms'
-import { Allowance, OvertimeType } from '../../../../types/scenario'
+import { activeScenarioAtom } from '../../../atoms/scenarioAtoms'
+import { Allowance, Overtime, Scenario } from '@types/scenario'
+import React from 'react'
 
-export const InputSection = (): JSX.Element => {
+export const InputSection = (): React.JSX.Element => {
   const [activeScenario, setActiveScenario] = useAtom(activeScenarioAtom)
 
-  // シナリオ名
-  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
-    setActiveScenario({ ...activeScenario, scenarioName: e.target.value })
+  // 汎用的な更新ハンドラ
+  const updateScenario = <K extends keyof Scenario>(key: K, value: Scenario[K]): void => {
+    setActiveScenario((prev) => ({ ...prev, [key]: value }))
   }
 
-  // 基本給
-  const handleBaseSalaryChange = (_: string, valueAsNumber: number): void => {
-    setActiveScenario({ ...activeScenario, baseSalary: valueAsNumber })
+  // 数値入力用のハンドラ
+  const handleNumberChange = (
+    key: 'baseSalary' | 'salaryGrowthRate',
+    details: { valueAsString: string; valueAsNumber: number }
+  ): void => {
+    updateScenario(key, details.valueAsNumber)
   }
 
-  // 手当
-  const handleAllowanceChange = (index: number, field: keyof Allowance, value: string | number): void => {
+  // 残業時間のハンドラ
+  const handleOvertimeHoursChange = (details: {
+    valueAsString: string
+    valueAsNumber: number
+  }): void => {
+    setActiveScenario((prev) => ({
+      ...prev,
+      overtime: { ...prev.overtime, hours: details.valueAsNumber }
+    }))
+  }
+
+  // 手当の変更ハンドラ
+  const handleAllowanceChange = (
+    index: number,
+    field: keyof Allowance,
+    value: string | number
+  ): void => {
     const newAllowances = [...activeScenario.allowances]
     newAllowances[index] = { ...newAllowances[index], [field]: value }
-    setActiveScenario({ ...activeScenario, allowances: newAllowances })
+    updateScenario('allowances', newAllowances)
   }
 
   const addAllowance = (): void => {
-    setActiveScenario({
-      ...activeScenario,
-      allowances: [...activeScenario.allowances, { name: '新規手当', amount: 0 }],
-    })
+    const newAllowances = [
+      ...activeScenario.allowances,
+      { name: '新規手当', amount: 0 } as Allowance
+    ]
+    updateScenario('allowances', newAllowances)
   }
 
   const removeAllowance = (index: number): void => {
     const newAllowances = activeScenario.allowances.filter((_, i) => i !== index)
-    setActiveScenario({ ...activeScenario, allowances: newAllowances })
+    updateScenario('allowances', newAllowances)
   }
-
-  // 残業代
-  const handleOvertimeTypeChange = (e: React.ChangeEvent<Select>): void => {
-    setActiveScenario({
-      ...activeScenario,
-      overtime: { ...activeScenario.overtime, type: e.target.value as OvertimeType },
-    })
-  }
-  const handleOvertimeHoursChange = (_: string, valueAsNumber: number): void => {
-    setActiveScenario({
-      ...activeScenario,
-      overtime: { ...activeScenario.overtime, hours: valueAsNumber },
-    })
-  }
-
-  // 成長率
-  const handleGrowthRateChange = (_: string, valueAsNumber: number): void => {
-    setActiveScenario({ ...activeScenario, salaryGrowthRate: valueAsNumber })
-  }
+  const frameworks = createListCollection({
+    items: [
+      { label: 'React.js', value: 'react' },
+      { label: 'Vue.js', value: 'vue' },
+      { label: 'Angular', value: 'angular' },
+      { label: 'Svelte', value: 'svelte' }
+    ]
+  })
 
   return (
     <Box>
-      <Stack spacing={6}>
+      <Stack gap={6}>
         {/* シナリオ名 */}
-        <FormControl>
-          <FormLabel>シナリオ名</FormLabel>
-          <Input value={activeScenario.scenarioName} onChange={handleNameChange} />
-        </FormControl>
+        <Field.Root>
+          <Field.Label>シナリオ名</Field.Label>
+          <Input
+            value={activeScenario.name}
+            onChange={(e) => updateScenario('name', e.target.value)}
+          />
+        </Field.Root>
 
         {/* 基本給 */}
-        <FormControl>
-          <FormLabel>月収（基本給）</FormLabel>
-          <NumberInput
-            value={activeScenario.baseSalary}
-            onChange={handleBaseSalaryChange}
+        <Field.Root>
+          <Field.Label>月収（基本給）</Field.Label>
+          <NumberInput.Root
+            value={String(activeScenario.baseSalary)}
+            onValueChange={(details) => handleNumberChange('baseSalary', details)}
             step={10000}
             min={0}
           >
-            <NumberInputField />
-            <NumberInputStepper>
-              <NumberIncrementStepper />
-              <NumberDecrementStepper />
-            </NumberInputStepper>
-          </NumberInput>
-        </FormControl>
+            <NumberInput.Control>
+              <NumberInput.IncrementTrigger />
+              <NumberInput.DecrementTrigger />
+            </NumberInput.Control>
+            <NumberInput.Input />
+          </NumberInput.Root>
+        </Field.Root>
 
         {/* 手当 */}
-        <FormControl>
-          <FormLabel>手当</FormLabel>
-          <Stack spacing={3}>
+        <Field.Root>
+          <Field.Label>手当</Field.Label>
+          <Stack gap={3}>
             {activeScenario.allowances.map((allowance, index) => (
               <HStack key={index}>
                 <Input
@@ -108,58 +117,82 @@ export const InputSection = (): JSX.Element => {
                   value={allowance.name}
                   onChange={(e) => handleAllowanceChange(index, 'name', e.target.value)}
                 />
-                <NumberInput
-                  value={allowance.amount}
-                  onChange={(_, num) => handleAllowanceChange(index, 'amount', num)}
+                <NumberInput.Root
+                  value={String(allowance.amount)}
+                  onValueChange={(details) =>
+                    handleAllowanceChange(index, 'amount', details.valueAsNumber)
+                  }
                   min={0}
                 >
-                  <NumberInputField />
-                </NumberInput>
+                  <NumberInput.Input />
+                </NumberInput.Root>
                 <IconButton
                   aria-label="手当を削除"
-                  icon={<DeleteIcon />}
                   onClick={() => removeAllowance(index)}
                   colorScheme="red"
-                />
+                >
+                  <IoTrash />
+                </IconButton>
               </HStack>
             ))}
-            <Button leftIcon={<AddIcon />} onClick={addAllowance} size="sm">
+            <Button onClick={addAllowance} size="sm">
+              <IoAdd />
               手当を追加
             </Button>
           </Stack>
-        </FormControl>
+        </Field.Root>
 
         {/* 残業代 */}
-        <FormControl>
-          <FormLabel>残業代</FormLabel>
+        <Field.Root>
+          <Field.Label>残業代</Field.Label>
           <HStack>
-            <Select value={activeScenario.overtime.type} onChange={handleOvertimeTypeChange}>
-              <option value="fixed">固定残業代なし</option>
-              <option value="variable">固定残業代あり</option>
-            </Select>
-            <NumberInput
-              value={activeScenario.overtime.hours}
-              onChange={handleOvertimeHoursChange}
+            {/* ▼▼▼ ここからSelectコンポーネントを修正 ▼▼▼ */}
+            <Select.Root
+              value={activeScenario.overtime.type}
+              onValueChange={handleOvertimeTypeChange}
+              flex="1"
+            >
+              <Select.Control>
+                <Select.Trigger>
+                  <Select.ValueText />
+                </Select.Trigger>
+              </Select.Control>
+              <Select.Positioner>
+                <Select.Content>
+                  <Select.Item item="fixed">
+                    固定残業代なし
+                    <Select.ItemIndicator />
+                  </Select.Item>
+                  <Select.Item item="variable">
+                    固定残業代あり
+                    <Select.ItemIndicator />
+                  </Select.Item>
+                </Select.Content>
+              </Select.Positioner>
+            </Select.Root>
+            <NumberInput.Root
+              value={String(activeScenario.overtime.hours)}
+              onValueChange={handleOvertimeHoursChange}
               min={0}
             >
-              <NumberInputField />
-            </NumberInput>
+              <NumberInput.Input />
+            </NumberInput.Root>
             <Text whiteSpace="nowrap">時間/月</Text>
           </HStack>
-        </FormControl>
+        </Field.Root>
 
         {/* 昇給率 */}
-        <FormControl>
-          <FormLabel>年間昇給率</FormLabel>
-          <NumberInput
-            value={activeScenario.salaryGrowthRate}
-            onChange={handleGrowthRateChange}
+        <Field.Root>
+          <Field.Label>年間昇給率 (%)</Field.Label>
+          <NumberInput.Root
+            value={String(activeScenario.salaryGrowthRate)}
+            onValueChange={(details) => handleNumberChange('salaryGrowthRate', details)}
             step={0.1}
-            precision={2}
+            formatOptions={{ style: 'percent', minimumFractionDigits: 1 }}
           >
-            <NumberInputField />
-          </NumberInput>
-        </FormControl>
+            <NumberInput.Input />
+          </NumberInput.Root>
+        </Field.Root>
       </Stack>
     </Box>
   )

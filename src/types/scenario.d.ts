@@ -36,7 +36,7 @@ export interface Scenario {
   baseSalary: number // 基本給 (月額)
   allowances: Allowance[] // 手当リスト
   hasFixedOvertime: boolean // 固定残業代の有無
-  fixedOvertime: FixedOvertime
+  overtime: FixedOvertime
   salaryGrowthRate: number // 年間給与成長率 (%)
   createdAt: string // 作成日時 (ISO文字列)
 }

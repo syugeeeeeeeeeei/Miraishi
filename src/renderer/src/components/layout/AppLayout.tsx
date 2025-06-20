@@ -12,15 +12,16 @@ const COLLAPSED_WIDTH = 72
 
 export function AppLayout({ children }: AppLayoutProps): React.JSX.Element {
   // パネルが展開されているかどうかの状態
-  const [isExpanded, setIsExpanded] = useState(true)
-
+  const [isExpanded, setIsExpanded] = useState(false)
   // 状態に応じてパネルの幅を決定
   const panelWidth = isExpanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH
 
   return (
     <Flex h="100vh" bg="brand.base" overflow="hidden">
       <ControlPanel
-        onToggle={() => setIsExpanded(!isExpanded)}
+        panelToggle={() => setIsExpanded(!isExpanded)}
+        panelOpen={() => setIsExpanded(true)}
+        panelClose={() => setIsExpanded(false)}
         isExpanded={isExpanded}
         width={panelWidth}
       />

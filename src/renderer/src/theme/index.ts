@@ -24,10 +24,10 @@ const config = defineConfig({
         brand: {
           offWhite: { value: '#fdfbf4' },
           navy: { value: '#1e1e68' },
-          teal: { value: '#01a5a5' },
+          teal: { value: 'rgb(7,223,112)' },
           tealLight: { value: '#48D1CC' },
           tealDark: { value: '#276c6b' },
-          cardBg: { value: '#f4eadb' },
+          cardBg: { value: 'rgb(255,249,224)' },
           deepBg: { value: '#d5bca4' }
         },
         neutral: {

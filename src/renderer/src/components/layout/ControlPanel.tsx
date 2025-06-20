@@ -1,10 +1,12 @@
-import { VStack, Text, Flex, IconButton, Button, ButtonProps, Box, HStack } from '@chakra-ui/react'
+import { VStack, Text, Flex, IconButton, Button, ButtonProps, Box, HStack, Separator } from '@chakra-ui/react'
 import { RxPencil2, RxHamburgerMenu } from 'react-icons/rx'
 import { GoGear, GoSearch } from 'react-icons/go'
 import React from 'react'
 
 interface ControlPanelProps {
-  onToggle: () => void // パネルの開閉を切り替えるための関数
+  panelToggle: () => void // パネルの開閉を切り替えるための関数
+  panelOpen: () => void // パネルを開くための関数
+  panelClose: () => void // パネルを閉じるための
   isExpanded: boolean // パネルが展開されているかどうかの状態
   width: number // 現在のパネルの幅
 }
@@ -29,6 +31,7 @@ const ExpandingButton: React.FC<ExpandingTextButtonProps> = ({
       overflow="hidden" // テキストがはみ出るのを防ぐ
       {...props}
       px={0}
+      rounded={'3xl'}
       transition="all 0.2s ease-in-out"
       _hover={{
         bg: 'app.accent.dark',
@@ -50,7 +53,9 @@ const ExpandingButton: React.FC<ExpandingTextButtonProps> = ({
   )
 }
 export function ControlPanel({
-  onToggle,
+  panelToggle,
+  panelOpen,
+  panelClose,
   isExpanded,
   width
 }: ControlPanelProps): React.JSX.Element {
@@ -62,17 +67,19 @@ export function ControlPanel({
       h="100vh"
       bg="component.background"
       p={3}
-      transition="width 0.25s ease" // widthの変化をアニメーションさせる
+      transition="width 0.15s ease" // widthの変化をアニメーションさせる
       flexShrink={0}
       overflow="hidden"
       whiteSpace="nowrap"
+      onMouseOver={panelOpen}
+      onMouseOut={panelClose}
     >
       {/* --- ヘッダー --- */}
       <Flex direction="column" gap={4}>
         <HStack minH="40px" justifyContent="space-between">
           <ExpandingButton
             isExpanded={false}
-            onClick={onToggle}
+            onClick={panelToggle}
             bg={'app.accent'}
             icon={<RxHamburgerMenu size={'1.2em'} />}
           />
@@ -84,6 +91,7 @@ export function ControlPanel({
             />
           )}
         </HStack>
+        <Separator size={'lg'} />
         <ExpandingButton
           isExpanded={isExpanded}
           icon={<RxPencil2 size={'1.2em'} />}
@@ -101,6 +109,7 @@ export function ControlPanel({
         {/* (ここにシナリオのリストを.mapで展開) */}
       </VStack>
 
+      <Separator size={'lg'} />
       {/* --- フッター --- */}
       <VStack align="stretch" pt={4}>
         <ExpandingButton isExpanded={isExpanded} icon={<GoGear size="1.2em" />} bg={'app.accent'}>
