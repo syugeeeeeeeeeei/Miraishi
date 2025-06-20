@@ -4,7 +4,16 @@
   "compilerOptions": {
     "composite": true,
     "types": ["electron-vite/node"],
-    "module": "Node16",
-    "moduleResolution": "node16"
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
+    "baseUrl": ".",
+    "paths": {
+      "@renderer/*": [
+        "src/renderer/src/*"
+      ],
+      "@myTypes/*": [
+        "src/types/*"
+      ]
+    }
   }
 }

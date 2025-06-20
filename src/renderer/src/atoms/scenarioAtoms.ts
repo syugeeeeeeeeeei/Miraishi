@@ -1,31 +1,58 @@
-import { atom } from 'jotai'
-import type { Scenario } from '../../../types/scenario' // 型定義をインポート
-import { v4 as uuidv4 } from 'uuid'
+import { atom } from 'jotai';
+import { Scenario, Person } from '@myTypes/scenario';
 
-/**
- * 新しい空のシナリオを生成するための初期値。
- * 「新規作成」ボタンが押されたときなどに利用します。
- */
-const createDefaultScenario = (): Scenario => ({
-  id: uuidv4(),
-  name: '新しいシナリオ',
-  baseSalary: 300000, // 新卒の初任給の仮置き
-  allowances: [],
-  hasFixedOvertime: false,
-  fixedOvertime: { amount: 0, hours: 0 },
-  salaryGrowthRate: 3.0, // 仮の昇給率
-  createdAt: new Date().toISOString()
-})
+const initialPerson: Person = {
+  age: 40,
+  income: {
+    salary: 5000000,
+    pension: 0,
+    other: 0,
+  },
+  deduction: {
+    socialInsurance: 700000,
+    lifeInsurance: 0,
+    earthquakeInsurance: 0,
+    ideco: 0,
+  },
+};
 
-/**
- * 現在アクティブになっている（編集中の）シナリオの状態を保持するatom。
- * 初期値として、空のシナリオをセットしておきます。
- */
-export const activeScenarioAtom = atom<Scenario>(createDefaultScenario())
+const initialScenario: Scenario = {
+  id: 'default',
+  name: 'デフォルトシナリオ',
+  mainPerson: { ...initialPerson },
+  // spouseの初期状態も定義
+  spouse: {
+    ...initialPerson,
+    age: 38,
+    income: { salary: 2000000, pension: 0, other: 0 },
+    deduction: { socialInsurance: 300000, lifeInsurance: 0, earthquakeInsurance: 0, ideco: 0 },
+  },
+  dependents: [],
+};
 
-/**
- * 保存されているすべてのシナリオのリストを保持するatom。
- * アプリケーション起動時に、後ほど作成する`electron-store`のロジックから
- * 読み込んだデータで初期化することを想定しています。
- */
-export const savedScenariosAtom = atom<Scenario[]>([])
+export const scenarioAtom = atom<Scenario>(initialScenario);
+
+// 世帯主、配偶者、扶養家族にアクセスしやすくするための派生Atom
+export const mainPersonAtom = atom(
+  (get) => get(scenarioAtom).mainPerson,
+  (get, set, newMainPerson: Person) => {
+    const currentScenario = get(scenarioAtom);
+    set(scenarioAtom, { ...currentScenario, mainPerson: newMainPerson });
+  }
+);
+
+export const spouseAtom = atom(
+  (get) => get(scenarioAtom).spouse,
+  (get, set, newSpouse: Person) => {
+    const currentScenario = get(scenarioAtom);
+    set(scenarioAtom, { ...currentScenario, spouse: newSpouse });
+  }
+);
+
+export const dependentsAtom = atom(
+  (get) => get(scenarioAtom).dependents,
+  (get, set, newDependents) => {
+    const currentScenario = get(scenarioAtom);
+    set(scenarioAtom, { ...currentScenario, dependents: newDependents });
+  }
+);
