@@ -1,7 +1,18 @@
-import { VStack, Text, Flex, IconButton, Button, ButtonProps, Box, HStack, Separator } from '@chakra-ui/react'
-import { RxPencil2, RxHamburgerMenu } from 'react-icons/rx'
+import {
+  VStack,
+  Text,
+  Flex,
+  IconButton,
+  Button,
+  ButtonProps,
+  Box,
+  HStack,
+  Separator,
+  Input
+} from '@chakra-ui/react'
+import { RxPencil2, RxHamburgerMenu, RxCross2 } from 'react-icons/rx'
 import { GoGear, GoSearch } from 'react-icons/go'
-import React from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 
 interface ControlPanelProps {
   panelToggle: () => void // パネルの開閉を切り替えるための関数
@@ -52,6 +63,7 @@ const ExpandingButton: React.FC<ExpandingTextButtonProps> = ({
     </Button>
   )
 }
+
 export function ControlPanel({
   panelToggle,
   panelOpen,
@@ -59,6 +71,50 @@ export function ControlPanel({
   isExpanded,
   width
 }: ControlPanelProps): React.JSX.Element {
+  const controlPanelRef = useRef(null)
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const isClickedHamburger = useRef(false)
+
+  // isSearchOpenがtrueになったら、Inputにフォーカスを当てる
+  useEffect(() => {
+    if (isSearchOpen) {
+      // transitionのアニメーションが終わるのを待ってからフォーカス
+      setTimeout(() => {
+        inputRef.current?.focus()
+      }, 300)
+    }
+  }, [isSearchOpen])
+
+  // Inputからフォーカスが外れ、かつ入力が空の場合に検索フォームを閉じる
+  const handleInputBlur = (): void => {
+    // クリアボタン押下時など、すぐには閉じないように少し遅延させる
+    setTimeout(() => {
+      if (inputRef.current?.value === '') {
+        setIsSearchOpen(false)
+      }
+    }, 300)
+  }
+
+  const handlePanelToggle = (): void => {
+    isClickedHamburger.current = !isClickedHamburger.current
+    if (!isExpanded) panelToggle()
+  }
+
+  const handleOpenPanel = (): void => {
+    setTimeout(() => {
+      if (!isClickedHamburger.current) panelOpen()
+    }, 100)
+  }
+  const handleClosePanel = (): void => {
+    setTimeout(() => {
+      if (!isClickedHamburger.current) panelClose()
+      setIsSearchOpen(false)
+    }, 100)
+  }
+  // 検索をする関数(現在はモック)
+  const handleSubmit = (): void => {}
+
   return (
     <Flex
       as="aside"
@@ -71,27 +127,108 @@ export function ControlPanel({
       flexShrink={0}
       overflow="hidden"
       whiteSpace="nowrap"
-      onMouseOver={panelOpen}
-      onMouseOut={panelClose}
+      onMouseOver={handleOpenPanel}
+      onMouseLeave={handleClosePanel}
+      ref={controlPanelRef}
+      gap={4}
     >
       {/* --- ヘッダー --- */}
-      <Flex direction="column" gap={4}>
+      <Flex direction="column">
         <HStack minH="40px" justifyContent="space-between">
-          <ExpandingButton
-            isExpanded={false}
-            onClick={panelToggle}
-            bg={'app.accent'}
-            icon={<RxHamburgerMenu size={'1.2em'} />}
-          />
-          {isExpanded && (
+          {/* ハンバーガーメニュー (検索フォーム展開中は非表示) */}
+          <Box transition={'opacity 0.2s ease'}>
             <ExpandingButton
               isExpanded={false}
+              onClick={handlePanelToggle}
               bg={'app.accent'}
-              icon={<GoSearch size={'1.2em'} />}
+              icon={<RxHamburgerMenu size={'1.2em'} />}
             />
+          </Box>
+
+          {/* 検索フォーム (パネル展開時のみ表示) */}
+          {isExpanded && (
+            <Flex
+              position="relative"
+              h="44px"
+              alignItems="center"
+              justifyContent="flex-start" // 左詰め
+              w={isSearchOpen ? '100%' : '44px'}
+              transition="width 0.3s ease-in-out"
+            >
+              {/* 検索アイコン (常に表示、クリックでフォーム展開) */}
+              <IconButton
+                aria-label="検索を開く"
+                bg={isSearchOpen ? 'transparent' : 'app.accent'}
+                disabled={isSearchOpen}
+                cursor={'pointer'}
+                color={isSearchOpen ? 'app.text.secondary' : 'white'}
+                size="lg"
+                rounded={'3xl'}
+                position="absolute"
+                top="50%"
+                left="0"
+                transform="translateY(-50%)"
+                onClick={() => {
+                  if (isSearchOpen) {
+                    handleSubmit()
+                  } else {
+                    setIsSearchOpen(true)
+                  }
+                }}
+                _hover={{ bg: isSearchOpen ? '' : 'app.accent.dark' }}
+                zIndex={1} // Inputの上に表示
+              >
+                <GoSearch size="1.2em" />
+              </IconButton>
+
+              {/* 検索入力フィールド */}
+              <Input
+                ref={inputRef}
+                placeholder="検索..."
+                h="100%"
+                w="100%"
+                borderWidth="1px"
+                borderColor="app.accent"
+                bg="component.background"
+                rounded="full"
+                pl="44px" // 検索アイコンのスペース
+                pr="44px" // クリアボタンのスペース
+                opacity={isSearchOpen ? 1 : 0}
+                pointerEvents={isSearchOpen ? 'auto' : 'none'}
+                transition="opacity 0.2s ease-in-out"
+                onSubmit={handleSubmit}
+                onBlur={handleInputBlur}
+              />
+
+              {/* クリアボタン */}
+              <IconButton
+                aria-label="検索をクリア"
+                variant="ghost"
+                color="app.text.secondary"
+                size="md"
+                position="absolute"
+                right="4px"
+                top="50%"
+                transform="translateY(-50%)"
+                opacity={isSearchOpen ? 1 : 0}
+                pointerEvents={isSearchOpen ? 'auto' : 'none'}
+                transition="opacity 0.2s ease-in-out"
+                onClick={() => {
+                  // if (inputRef.current) inputRef.current.value = ''
+                  setIsSearchOpen(false)
+                }}
+                _hover={{ bg: 'rgba(255, 255, 255, 0.1)' }}
+              >
+                <RxCross2 size="1.2em" />
+              </IconButton>
+            </Flex>
           )}
         </HStack>
-        <Separator size={'lg'} />
+      </Flex>
+      <Separator size={'lg'} />
+
+      {/* --- シナリオリスト (ボディ) --- */}
+      <VStack align="stretch" flex="1" overflowY="auto" overflowX={'hidden'}>
         <ExpandingButton
           isExpanded={isExpanded}
           icon={<RxPencil2 size={'1.2em'} />}
@@ -99,10 +236,6 @@ export function ControlPanel({
         >
           新規作成
         </ExpandingButton>
-      </Flex>
-
-      {/* --- シナリオリスト (ボディ) --- */}
-      <VStack mt={6} align="stretch" flex="1" overflowY="auto" overflowX={'hidden'}>
         <Text fontSize="sm" fontWeight="bold" color="app.text.secondary" px={3}>
           {isExpanded ? 'シナリオ一覧' : ''}
         </Text>
@@ -111,7 +244,7 @@ export function ControlPanel({
 
       <Separator size={'lg'} />
       {/* --- フッター --- */}
-      <VStack align="stretch" pt={4}>
+      <VStack align="stretch">
         <ExpandingButton isExpanded={isExpanded} icon={<GoGear size="1.2em" />} bg={'app.accent'}>
           設定
         </ExpandingButton>
