@@ -2,7 +2,7 @@
  * @file src/renderer/src/components/GraphView.tsx
  * @description 計算結果をグラフで表示するドロワーコンポーネント
  */
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useTransition } from 'react'
 import {
   Drawer,
   DrawerBody,
@@ -52,9 +52,20 @@ export function GraphView(): React.JSX.Element {
   const [settings, setSettings] = useAtom(graphViewSettingsAtom)
   const [activeScenarios] = useAtom(activeScenariosAtom)
   const calculatePredictions = useSetAtom(calculatePredictionsAtom)
-  const [isCalculating, setIsCalculating] = useState(false)
+  const [isCalculating, setIsCalculating] = useState<boolean>(false)
+  const [isPending, startTransition] = useTransition()
 
-  useEffect(() => {
+  const handleSliderChangeEnd = (type: 'period' | 'overtime', value: number): void => {
+    startTransition(() => {
+      if (type === 'period') {
+        setSettings({ ...settings, predictionPeriod: value })
+      } else {
+        setSettings({ ...settings, averageOvertimeHours: value })
+      }
+    })
+  }
+
+  useEffect((): void => {
     const handleRecalculate = async (): Promise<void> => {
       if (activeScenarios.length > 0) {
         setIsCalculating(true)
@@ -63,7 +74,6 @@ export function GraphView(): React.JSX.Element {
       }
     }
     handleRecalculate()
-    // settings全体を依存配列に含めることで、どの設定が変更されても再計算が走る
   }, [settings, calculatePredictions, activeScenarios.length])
 
   if (!results && !isCalculating) {
@@ -121,14 +131,13 @@ export function GraphView(): React.JSX.Element {
   }
 
   return (
-    <Drawer isOpen={isOpen} placement="right" onClose={(): void => setIsOpen(false)} size="xl">
+    <Drawer isOpen={isOpen} placement="right" onClose={(): void => setIsOpen(false)} size="full">
       <DrawerOverlay />
       <DrawerContent>
         <DrawerCloseButton />
         <DrawerHeader borderBottomWidth="1px">グラフビュー</DrawerHeader>
         <DrawerBody>
           <Flex h="100%">
-            {/* 左側: グラフセクション */}
             <Box flex="0.7" pr={8} position="relative">
               {(isCalculating || (results.length === 0 && activeScenarios.length > 0)) && (
                 <Flex
@@ -150,8 +159,7 @@ export function GraphView(): React.JSX.Element {
               )}
             </Box>
 
-            {/* 右側: コントロールセクション */}
-            <Box flex="0.3" borderLeftWidth="1px" pl={8}>
+            <Box flex="0.3" borderLeftWidth="1px" pl={8} opacity={isPending ? 0.7 : 1}>
               <VStack spacing={6} align="stretch">
                 <Heading size="md">表示設定</Heading>
                 <FormControl>
@@ -159,12 +167,12 @@ export function GraphView(): React.JSX.Element {
                     予測期間: <Badge colorScheme="teal">{settings.predictionPeriod}年</Badge>
                   </FormLabel>
                   <Slider
-                    aria-label="prediction-period-slider"
-                    value={settings.predictionPeriod}
-                    onChange={(val) => setSettings({ ...settings, predictionPeriod: val })}
+                    defaultValue={settings.predictionPeriod}
+                    onChangeEnd={(val) => handleSliderChangeEnd('period', val)}
                     min={1}
                     max={50}
                     step={1}
+                    isDisabled={isPending}
                   >
                     <SliderTrack>
                       <SliderFilledTrack />
@@ -179,12 +187,12 @@ export function GraphView(): React.JSX.Element {
                     <Badge colorScheme="orange">{settings.averageOvertimeHours}時間</Badge>
                   </FormLabel>
                   <Slider
-                    aria-label="overtime-hours-slider"
-                    value={settings.averageOvertimeHours}
-                    onChange={(val) => setSettings({ ...settings, averageOvertimeHours: val })}
+                    defaultValue={settings.averageOvertimeHours}
+                    onChangeEnd={(val) => handleSliderChangeEnd('overtime', val)}
                     min={0}
                     max={100}
                     step={1}
+                    isDisabled={isPending}
                   >
                     <SliderTrack>
                       <SliderFilledTrack />
@@ -198,10 +206,12 @@ export function GraphView(): React.JSX.Element {
                   <CheckboxGroup
                     colorScheme="green"
                     value={settings.displayItem}
-                    onChange={(values) =>
-                      setSettings({
-                        ...settings,
-                        displayItem: values as ('grossAnnual' | 'netAnnual')[]
+                    onChange={(values): void =>
+                      startTransition((): void => {
+                        setSettings({
+                          ...settings,
+                          displayItem: values as ('grossAnnual' | 'netAnnual')[]
+                        })
                       })
                     }
                   >

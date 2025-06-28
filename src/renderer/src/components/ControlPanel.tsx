@@ -74,7 +74,7 @@ export function ControlPanel(): React.JSX.Element {
   return (
     <>
       <Box
-        w={isOpen ? '300px' : '60px'} // 幅を広げる
+        w={isOpen ? '300px' : '75px'} // 幅を広げる
         h="100vh"
         bg="brand.white"
         p={4} // 余白を調整
@@ -99,13 +99,17 @@ export function ControlPanel(): React.JSX.Element {
               bg="brand.accent"
               color="white"
               onClick={handleCreateNewScenario}
-              justifyContent={isOpen ? 'flex-start' : 'center'}
+              justifyContent="flex-start"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              py={6} // ボタンの高さを調整
+              // py={6} // ボタンの高さを調整
             >
               <FaPlus />
-              {isOpen && <Text ml={3}>新しいシナリオ</Text>}
+              {isOpen && (
+                <Text ml={3} noOfLines={1}>
+                  新しいシナリオ
+                </Text>
+              )}
             </MotionButton>
           </Tooltip>
 

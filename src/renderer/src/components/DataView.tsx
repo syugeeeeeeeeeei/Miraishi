@@ -1,8 +1,8 @@
 /**
  * @file src/renderer/src/components/DataView.tsx
- * @description 選択された複数シナリオを横並びで表示・編集するコンポーネント
+ * @description 選択された複数シナリオをスライド形式で表示・編集するコンポーネント
  */
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useTransition } from 'react'
 import {
   Box,
   Heading,
@@ -26,10 +26,11 @@ import {
   SliderFilledTrack,
   SliderThumb,
   Badge,
-  Spacer // Spacerをインポート
+  Spacer
 } from '@chakra-ui/react'
-import { FaPlus, FaTrash, FaChartLine } from 'react-icons/fa'
+import { FaPlus, FaTrash, FaChartLine, FaChevronLeft, FaChevronRight } from 'react-icons/fa'
 import { useAtom, useSetAtom, useAtomValue } from 'jotai'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   activeScenariosAtom,
   updateScenarioAtom,
@@ -44,25 +45,21 @@ import { CalculationResult } from './CalculationResult'
 
 // -----------------------------------------------------------------------------
 // DataViewCard
+// (このコンポーネントは変更ありません)
 // -----------------------------------------------------------------------------
 interface DataViewCardProps {
   scenario: Scenario
   predictionResult: PredictionResult | null
-  styleProps: object
 }
 
-function DataViewCard({
-  scenario,
-  predictionResult,
-  styleProps
-}: DataViewCardProps): React.JSX.Element {
+function DataViewCard({ scenario, predictionResult }: DataViewCardProps): React.JSX.Element {
   const updateScenario = useSetAtom(updateScenarioAtom)
   const calculatePredictions = useSetAtom(calculatePredictionsAtom)
   const [editableScenario, setEditableScenario] = useState<Scenario>(scenario)
   const toast = useToast()
   const graphViewSettings = useAtomValue(graphViewSettingsAtom)
 
-  useEffect(() => {
+  useEffect((): void => {
     setEditableScenario(scenario)
   }, [scenario])
 
@@ -123,28 +120,35 @@ function DataViewCard({
 
   return (
     <Box
+      key={scenario.id}
       h="100%"
       bg="brand.base"
-      border="1px solid"
-      borderColor="gray.200"
       borderRadius="lg"
+      boxShadow="md"
       display="flex"
       flexDirection="column"
-      {...styleProps}
-      onBlur={(e) => {
+      onBlur={(e: React.FocusEvent<HTMLDivElement>): void => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {
           handleSaveAndRecalculate()
         }
       }}
     >
-      <HStack p={4} borderBottom="1px solid" borderColor="gray.200" justifyContent="space-between">
+      <HStack
+        p={4}
+        borderBottom="1px solid"
+        borderColor="gray.200"
+        justifyContent="space-between"
+        flexShrink={0}
+      >
         <Input
           variant="flushed"
           fontWeight="bold"
           fontSize="lg"
           placeholder="シナリオ名"
           value={editableScenario.title}
-          onChange={(e) => updateNestedState('title', e.target.value)}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
+            updateNestedState('title', e.target.value)
+          }
           onKeyDown={handleKeyDown}
         />
       </HStack>
@@ -158,7 +162,9 @@ function DataViewCard({
               <NumberInput
                 size="sm"
                 value={editableScenario.initialBasicSalary ?? 0}
-                onChange={(_, vN) => updateNestedState('initialBasicSalary', isNaN(vN) ? 0 : vN)}
+                onChange={(_, vN): void =>
+                  updateNestedState('initialBasicSalary', isNaN(vN) ? 0 : vN)
+                }
                 min={0}
               >
                 <NumberInputField onKeyDown={handleKeyDown} placeholder="例: 300000" />
@@ -169,7 +175,7 @@ function DataViewCard({
               <NumberInput
                 size="sm"
                 value={editableScenario.annualBonus ?? 0}
-                onChange={(_, vN) => updateNestedState('annualBonus', isNaN(vN) ? 0 : vN)}
+                onChange={(_, vN): void => updateNestedState('annualBonus', isNaN(vN) ? 0 : vN)}
                 min={0}
               >
                 <NumberInputField onKeyDown={handleKeyDown} placeholder="例: 600000" />
@@ -180,7 +186,9 @@ function DataViewCard({
               <NumberInput
                 size="sm"
                 value={editableScenario.salaryGrowthRate ?? 0}
-                onChange={(_, vN) => updateNestedState('salaryGrowthRate', isNaN(vN) ? 0 : vN)}
+                onChange={(_, vN): void =>
+                  updateNestedState('salaryGrowthRate', isNaN(vN) ? 0 : vN)
+                }
                 min={0}
                 precision={1}
                 step={0.1}
@@ -198,7 +206,9 @@ function DataViewCard({
               <Switch
                 id={`probation-enabled-${scenario.id}`}
                 isChecked={editableScenario.probation?.enabled ?? false}
-                onChange={(e) => updateNestedState('probation.enabled', e.target.checked)}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
+                  updateNestedState('probation.enabled', e.target.checked)
+                }
               />
             </FormControl>
             {editableScenario.probation?.enabled && (
@@ -208,7 +218,7 @@ function DataViewCard({
                   <NumberInput
                     size="sm"
                     value={editableScenario.probation?.durationMonths ?? 0}
-                    onChange={(_, vN) =>
+                    onChange={(_, vN): void =>
                       updateNestedState('probation.durationMonths', isNaN(vN) ? 0 : vN)
                     }
                     min={0}
@@ -221,7 +231,7 @@ function DataViewCard({
                   <NumberInput
                     size="sm"
                     value={editableScenario.probation?.basicSalary ?? 0}
-                    onChange={(_, vN) =>
+                    onChange={(_, vN): void =>
                       updateNestedState('probation.basicSalary', isNaN(vN) ? 0 : vN)
                     }
                     min={0}
@@ -234,7 +244,7 @@ function DataViewCard({
                   <NumberInput
                     size="sm"
                     value={editableScenario.probation?.fixedOvertime ?? 0}
-                    onChange={(_, vN) =>
+                    onChange={(_, vN): void =>
                       updateNestedState('probation.fixedOvertime', isNaN(vN) ? 0 : vN)
                     }
                     min={0}
@@ -266,7 +276,9 @@ function DataViewCard({
                   size="sm"
                   placeholder="手当名"
                   value={allowance.name}
-                  onChange={(e) => updateNestedState(`allowances.${index}.name`, e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
+                    updateNestedState(`allowances.${index}.name`, e.target.value)
+                  }
                   onKeyDown={handleKeyDown}
                 />
                 <HStack>
@@ -274,7 +286,7 @@ function DataViewCard({
                     size="sm"
                     w="100%"
                     value={allowance.amount}
-                    onChange={(_, vN) =>
+                    onChange={(_, vN): void =>
                       updateNestedState(`allowances.${index}.amount`, isNaN(vN) ? 0 : vN)
                     }
                     min={0}
@@ -285,7 +297,7 @@ function DataViewCard({
                     size="sm"
                     w="120px"
                     value={allowance.duration.type}
-                    onChange={(e) =>
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>): void =>
                       updateNestedState(`allowances.${index}.duration`, {
                         type: e.target.value,
                         value: 0
@@ -300,7 +312,7 @@ function DataViewCard({
                       size="sm"
                       w="80px"
                       value={allowance.duration.value}
-                      onChange={(_, vN) =>
+                      onChange={(_, vN): void =>
                         updateNestedState(`allowances.${index}.duration.value`, isNaN(vN) ? 0 : vN)
                       }
                       min={0}
@@ -314,7 +326,7 @@ function DataViewCard({
                     icon={<FaTrash />}
                     variant="ghost"
                     colorScheme="red"
-                    onClick={() => removeAllowance(index)}
+                    onClick={(): void => removeAllowance(index)}
                   />
                 </HStack>
               </VStack>
@@ -331,7 +343,7 @@ function DataViewCard({
                 id={`fixed-overtime-${scenario.id}`}
                 size="sm"
                 isChecked={editableScenario.overtime?.fixedOvertime?.enabled ?? false}
-                onChange={(e) =>
+                onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
                   updateNestedState('overtime.fixedOvertime.enabled', e.target.checked)
                 }
               />
@@ -343,7 +355,7 @@ function DataViewCard({
                   <NumberInput
                     size="sm"
                     value={editableScenario.overtime?.fixedOvertime?.amount ?? 0}
-                    onChange={(_, vN) =>
+                    onChange={(_, vN): void =>
                       updateNestedState('overtime.fixedOvertime.amount', isNaN(vN) ? 0 : vN)
                     }
                     min={0}
@@ -356,7 +368,7 @@ function DataViewCard({
                   <NumberInput
                     size="sm"
                     value={editableScenario.overtime?.fixedOvertime?.hours ?? 0}
-                    onChange={(_, vN) =>
+                    onChange={(_, vN): void =>
                       updateNestedState('overtime.fixedOvertime.hours', isNaN(vN) ? 0 : vN)
                     }
                     min={0}
@@ -378,7 +390,7 @@ function DataViewCard({
                 id={`has-spouse-${scenario.id}`}
                 size="sm"
                 isChecked={editableScenario.deductions?.dependents?.hasSpouse ?? false}
-                onChange={(e) =>
+                onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
                   updateNestedState('deductions.dependents.hasSpouse', e.target.checked)
                 }
               />
@@ -388,7 +400,7 @@ function DataViewCard({
               <NumberInput
                 size="sm"
                 value={editableScenario.deductions?.dependents?.numberOfDependents ?? 0}
-                onChange={(_, vN) =>
+                onChange={(_, vN): void =>
                   updateNestedState('deductions.dependents.numberOfDependents', isNaN(vN) ? 0 : vN)
                 }
                 min={0}
@@ -415,17 +427,35 @@ function DataViewCard({
 // -----------------------------------------------------------------------------
 function ControlSection(): React.JSX.Element {
   const [settings, setSettings] = useAtom(graphViewSettingsAtom)
+  const [isPending, startTransition] = useTransition()
+
+  const handleSliderChangeEnd = (type: 'period' | 'overtime', value: number): void => {
+    startTransition(() => {
+      if (type === 'period') {
+        setSettings({ ...settings, predictionPeriod: value })
+      } else {
+        setSettings({ ...settings, averageOvertimeHours: value })
+      }
+    })
+  }
 
   return (
-    <HStack p={4} borderBottom="1px solid" borderColor="gray.200" bg="white" spacing={8}>
+    <HStack
+      p={4}
+      borderBottom="1px solid"
+      borderColor="gray.200"
+      bg="white"
+      spacing={8}
+      opacity={isPending ? 0.7 : 1}
+      pointerEvents={isPending ? 'none' : 'auto'}
+    >
       <FormControl>
         <FormLabel fontSize="sm" mb={1}>
           計算期間: <Badge colorScheme="teal">{settings.predictionPeriod}年</Badge>
         </FormLabel>
         <Slider
-          aria-label="prediction-period-slider"
-          value={settings.predictionPeriod}
-          onChange={(val) => setSettings({ ...settings, predictionPeriod: val })}
+          defaultValue={settings.predictionPeriod}
+          onChangeEnd={(val) => handleSliderChangeEnd('period', val)}
           min={1}
           max={50}
           step={1}
@@ -441,9 +471,8 @@ function ControlSection(): React.JSX.Element {
           月平均の残業時間: <Badge colorScheme="orange">{settings.averageOvertimeHours}時間</Badge>
         </FormLabel>
         <Slider
-          aria-label="overtime-hours-slider"
-          value={settings.averageOvertimeHours}
-          onChange={(val) => setSettings({ ...settings, averageOvertimeHours: val })}
+          defaultValue={settings.averageOvertimeHours}
+          onChangeEnd={(val) => handleSliderChangeEnd('overtime', val)}
           min={0}
           max={100}
           step={1}
@@ -467,9 +496,16 @@ export function DataView(): React.JSX.Element {
   const calculatePredictions = useSetAtom(calculatePredictionsAtom)
   const setIsGraphViewVisible = useSetAtom(isGraphViewVisibleAtom)
   const settings = useAtomValue(graphViewSettingsAtom)
-  const [isCalculating, setIsCalculating] = useState(false)
+  const [isCalculating, setIsCalculating] = useState<boolean>(false)
+  const [currentIndex, setCurrentIndex] = useState<number>(0)
+  const [leftHovering, setLeftHovering] = useState<boolean>(false)
+  const [rightHovering, setRightHovering] = useState<boolean>(false)
 
-  useEffect(() => {
+  useEffect((): void => {
+    setCurrentIndex(0)
+  }, [activeScenarios.map((s) => s.id).join(',')])
+
+  useEffect((): void => {
     const recalculate = async (): Promise<void> => {
       setIsCalculating(true)
       await calculatePredictions()
@@ -480,7 +516,14 @@ export function DataView(): React.JSX.Element {
     } else {
       calculatePredictions()
     }
-  }, [activeScenarios.map((s) => s.id).join(','), settings])
+  }, [activeScenarios.length, calculatePredictions, settings])
+
+  const goToNext = (): void => {
+    setCurrentIndex((prev) => (prev + 1) % activeScenarios.length)
+  }
+  const goToPrev = (): void => {
+    setCurrentIndex((prev) => (prev - 1 + activeScenarios.length) % activeScenarios.length)
+  }
 
   if (activeScenarios.length === 0) {
     return (
@@ -495,13 +538,9 @@ export function DataView(): React.JSX.Element {
     )
   }
 
-  const numScenarios = activeScenarios.length
-  let cardStyleProps = {}
-  if (numScenarios === 1) {
-    cardStyleProps = { w: '100%', minW: '100%' }
-  } else {
-    cardStyleProps = { w: '50%', minW: '450px', flexShrink: 0 }
-  }
+  const currentScenario = activeScenarios[currentIndex]
+  const currentResult =
+    predictionResults.find((r) => r.scenarioId === currentScenario?.id)?.result || null
 
   return (
     <Box flex="1" h="100vh" display="flex" flexDirection="column" bg="gray.50">
@@ -520,7 +559,7 @@ export function DataView(): React.JSX.Element {
         <Button
           leftIcon={<FaChartLine />}
           colorScheme="purple"
-          onClick={() => setIsGraphViewVisible(true)}
+          onClick={(): void => setIsGraphViewVisible(true)}
           size="sm"
           isDisabled={predictionResults.length === 0}
         >
@@ -530,25 +569,127 @@ export function DataView(): React.JSX.Element {
 
       <ControlSection />
 
-      <Flex flex="1" w="100%" h="100%" overflowX="auto" p={4} gap={4}>
-        {isCalculating && (
-          <Flex w="100%" h="100%" align="center" justify="center">
-            <Spinner size="xl" />
-          </Flex>
+      <Flex
+        flex="1"
+        w="100%"
+        h="100%"
+        overflow="hidden"
+        position="relative"
+        alignItems="center"
+        justifyContent="center"
+      >
+        <AnimatePresence>
+          {isCalculating && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10
+              }}
+            >
+              <Spinner size="xl" />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {!isCalculating && activeScenarios.length > 1 && (
+          <>
+            <Box
+              position="absolute"
+              left={0}
+              top={0}
+              w="15%"
+              h="100%"
+              zIndex={2}
+              onMouseEnter={(): void => setLeftHovering(true)}
+              onMouseLeave={(): void => setLeftHovering(false)}
+            >
+              <motion.div
+                style={{ pointerEvents: leftHovering ? 'auto' : 'none' }}
+                animate={{ opacity: leftHovering ? 1 : 0 }}
+                transition={{ duration: 0.1 }}
+              >
+                <IconButton
+                  aria-label="Previous slide"
+                  icon={<FaChevronLeft />}
+                  onClick={goToPrev}
+                  position="absolute"
+                  left={4}
+                  top="50%"
+                  transform="translateY(-50%)"
+                  isRound
+                />
+              </motion.div>
+            </Box>
+            <Box
+              position="absolute"
+              right={0}
+              top={0}
+              w="15%"
+              h="100%"
+              zIndex={2}
+              onMouseEnter={(): void => setRightHovering(true)}
+              onMouseLeave={(): void => setRightHovering(false)}
+            >
+              <motion.div
+                style={{ pointerEvents: rightHovering ? 'auto' : 'none' }}
+                animate={{ opacity: rightHovering ? 1 : 0 }}
+                transition={{ duration: 0.1 }}
+              >
+                <IconButton
+                  aria-label="Next slide"
+                  icon={<FaChevronRight />}
+                  onClick={goToNext}
+                  position="absolute"
+                  right={4}
+                  top="50%"
+                  transform="translateY(-50%)"
+                  isRound
+                />
+              </motion.div>
+            </Box>
+          </>
         )}
-        {!isCalculating &&
-          activeScenarios.map((scenario) => {
-            const result =
-              predictionResults.find((r) => r.scenarioId === scenario.id)?.result || null
-            return (
-              <DataViewCard
-                key={scenario.id}
-                scenario={scenario}
-                predictionResult={result}
-                styleProps={cardStyleProps}
+
+        <AnimatePresence initial={false} mode="wait">
+          <motion.div
+            key={currentScenario?.id || currentIndex}
+            initial={{ x: 300, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -300, opacity: 0 }}
+            transition={{ duration: 0.1, ease: 'easeInOut' }}
+            style={{ width: '100%', height: '100%', padding: '16px' }}
+          >
+            {currentScenario && (
+              <DataViewCard scenario={currentScenario} predictionResult={currentResult} />
+            )}
+          </motion.div>
+        </AnimatePresence>
+
+        {activeScenarios.length > 1 && (
+          <HStack position="absolute" top={4} zIndex={1}>
+            {activeScenarios.map((_, index) => (
+              <Box
+                key={index}
+                w={3}
+                h={3}
+                bg={index === currentIndex ? 'brand.accent' : 'gray.300'}
+                borderRadius="full"
+                transition="background-color 0.2s"
               />
-            )
-          })}
+            ))}
+          </HStack>
+        )}
       </Flex>
     </Box>
   )

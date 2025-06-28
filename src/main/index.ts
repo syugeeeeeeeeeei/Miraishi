@@ -13,11 +13,18 @@ import type { Scenario, TaxSchema, PredictionResult, GraphViewSettings } from '.
 import { scenarioSchema } from './lib/validators'
 import { calculatePrediction } from './lib/calculator'
 
+// -----------------------------------------------------------------------------
+// 初期化
+// -----------------------------------------------------------------------------
+
 const store = new Store<{ scenarios: Scenario[] }>({
   defaults: {
     scenarios: []
   }
 })
+
+// 🔽 ----- 初期計算結果を保持するキャッシュを追加 ----- 🔽
+const initialCalculationCache = new Map<string, PredictionResult>()
 
 const taxSchemaPath = join(__dirname, '../../resources/schema/tax_schema.json')
 let taxSchema: TaxSchema | null = null
@@ -30,10 +37,16 @@ try {
   app.quit()
 }
 
+// -----------------------------------------------------------------------------
+// ウィンドウ作成
+// -----------------------------------------------------------------------------
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 1200,
+    height: 800,
+    minWidth: 1180,
+    minHeight: 768,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -43,7 +56,7 @@ function createWindow(): void {
     }
   })
 
-  mainWindow.on('ready-to-show', () => {
+  mainWindow.on('ready-to-show', (): void => {
     mainWindow.show()
   })
 
@@ -59,15 +72,47 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+// -----------------------------------------------------------------------------
+// アプリケーションライフサイクル
+// -----------------------------------------------------------------------------
+
+app.whenReady().then((): void => {
   electronApp.setAppUserModelId('com.electron')
 
-  app.on('browser-window-created', (_, window) => {
+  app.on('browser-window-created', (_, window): void => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC実装
-  ipcMain.handle('get-all-scenarios', () => {
+  // 🔽 ----- 投機的バックグラウンド計算のロジック ----- 🔽
+  const scenarios = store.get('scenarios', [])
+  if (scenarios.length > 0 && taxSchema) {
+    const firstScenario = scenarios[0]
+    const defaultSettings: GraphViewSettings = {
+      predictionPeriod: 10,
+      averageOvertimeHours: 0,
+      displayItem: ['netAnnual']
+    }
+
+    console.log(`Speculative calculation started for scenario: ${firstScenario.title}`)
+    try {
+      const result = calculatePrediction(
+        { scenario: firstScenario, settings: defaultSettings },
+        taxSchema
+      )
+      initialCalculationCache.set(firstScenario.id, result)
+      console.log(
+        `Speculative calculation finished and cached for scenario: ${firstScenario.title}`
+      )
+    } catch (e) {
+      console.error('Speculative calculation failed:', e)
+    }
+  }
+
+  // -----------------------------------------------------------------------------
+  // IPCハンドラ
+  // -----------------------------------------------------------------------------
+
+  ipcMain.handle('get-all-scenarios', (): Scenario[] => {
     return store.get('scenarios', [])
   })
 
@@ -151,6 +196,14 @@ app.whenReady().then(() => {
       _,
       { scenario, settings }: { scenario: Scenario; settings: GraphViewSettings }
     ): PredictionResult | { success: false; error: string } => {
+      // 🔽 ----- キャッシュを確認し、あればそれを返すロジック ----- 🔽
+      if (initialCalculationCache.has(scenario.id)) {
+        console.log(`Returning cached result for scenario: ${scenario.title}`)
+        const cachedResult = initialCalculationCache.get(scenario.id)!
+        initialCalculationCache.delete(scenario.id) // キャッシュは一度使ったら削除
+        return cachedResult
+      }
+
       try {
         if (!taxSchema) {
           throw new Error('Tax schema is not loaded.')
@@ -169,12 +222,12 @@ app.whenReady().then(() => {
 
   createWindow()
 
-  app.on('activate', function () {
+  app.on('activate', function (): void {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', (): void => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
