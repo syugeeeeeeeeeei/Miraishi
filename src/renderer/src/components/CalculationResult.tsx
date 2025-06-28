@@ -160,7 +160,7 @@ const RowComponent = ({
 
       <Modal isOpen={isOpen} onClose={onClose} isCentered size="xl">
         <ModalOverlay />
-        <ModalContent>
+        <ModalContent bg="brand.base">
           <ModalHeader>{detail.year}年目の詳細内訳</ModalHeader>
           <ModalCloseButton />
           <ModalBody mb={4}>

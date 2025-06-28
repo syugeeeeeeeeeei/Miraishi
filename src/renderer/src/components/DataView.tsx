@@ -429,6 +429,16 @@ function ControlSection(): React.JSX.Element {
   const [settings, setSettings] = useAtom(graphViewSettingsAtom)
   const [isPending, startTransition] = useTransition()
 
+  // 🔽 ----- ローカルStateを追加 ----- 🔽
+  const [tempPeriod, setTempPeriod] = useState(settings.predictionPeriod)
+  const [tempOvertime, setTempOvertime] = useState(settings.averageOvertimeHours)
+
+  // グローバルな設定が外部から変更された場合に、ローカルの表示も同期させる
+  useEffect(() => {
+    setTempPeriod(settings.predictionPeriod)
+    setTempOvertime(settings.averageOvertimeHours)
+  }, [settings.predictionPeriod, settings.averageOvertimeHours])
+
   const handleSliderChangeEnd = (type: 'period' | 'overtime', value: number): void => {
     startTransition(() => {
       if (type === 'period') {
@@ -451,10 +461,11 @@ function ControlSection(): React.JSX.Element {
     >
       <FormControl>
         <FormLabel fontSize="sm" mb={1}>
-          計算期間: <Badge colorScheme="teal">{settings.predictionPeriod}年</Badge>
+          計算期間: <Badge colorScheme="teal">{tempPeriod}年</Badge>
         </FormLabel>
         <Slider
-          defaultValue={settings.predictionPeriod}
+          value={tempPeriod}
+          onChange={(val) => setTempPeriod(val)}
           onChangeEnd={(val) => handleSliderChangeEnd('period', val)}
           min={1}
           max={50}
@@ -468,10 +479,11 @@ function ControlSection(): React.JSX.Element {
       </FormControl>
       <FormControl>
         <FormLabel fontSize="sm" mb={1}>
-          月平均の残業時間: <Badge colorScheme="orange">{settings.averageOvertimeHours}時間</Badge>
+          月平均の残業時間: <Badge colorScheme="orange">{tempOvertime}時間</Badge>
         </FormLabel>
         <Slider
-          defaultValue={settings.averageOvertimeHours}
+          value={tempOvertime}
+          onChange={(val) => setTempOvertime(val)}
           onChangeEnd={(val) => handleSliderChangeEnd('overtime', val)}
           min={0}
           max={100}
@@ -516,7 +528,7 @@ export function DataView(): React.JSX.Element {
     } else {
       calculatePredictions()
     }
-  }, [activeScenarios.length, calculatePredictions, settings])
+  }, [activeScenarios.map((s) => s.id).join(','), settings])
 
   const goToNext = (): void => {
     setCurrentIndex((prev) => (prev + 1) % activeScenarios.length)
@@ -667,7 +679,7 @@ export function DataView(): React.JSX.Element {
             initial={{ x: 300, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -300, opacity: 0 }}
-            transition={{ duration: 0.1, ease: 'easeInOut' }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
             style={{ width: '100%', height: '100%', padding: '16px' }}
           >
             {currentScenario && (
