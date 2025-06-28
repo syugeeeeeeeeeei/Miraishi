@@ -1,0 +1,26 @@
+{
+  "version": "2024.1.0",
+  "incomeTaxRates": [
+    { "threshold": 1950000, "rate": 0.05, "deduction": 0 },
+    { "threshold": 3300000, "rate": 0.1, "deduction": 97500 },
+    { "threshold": 6950000, "rate": 0.2, "deduction": 427500 },
+    { "threshold": 9000000, "rate": 0.23, "deduction": 636000 },
+    { "threshold": 18000000, "rate": 0.33, "deduction": 1536000 },
+    { "threshold": 40000000, "rate": 0.4, "deduction": 2796000 },
+    { "threshold": null, "rate": 0.45, "deduction": 4796000 }
+  ],
+  "residentTaxRate": 0.1,
+  "socialInsurance": {
+    "healthInsurance": {
+      "rate": 0.1,
+      "maxStandardRemuneration": 1390000
+    },
+    "pension": {
+      "rate": 0.183,
+      "maxStandardRemuneration": 650000
+    },
+    "employmentInsurance": {
+      "rate": 0.006
+    }
+  }
+}

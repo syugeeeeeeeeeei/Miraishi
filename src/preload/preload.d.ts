@@ -1,11 +1,9 @@
-// このファイルは、preload/index.tsで公開したAPIの型を
-// レンダラープロセス（UI側）のTypeScriptに教えるためのものです。
-// これにより、`window.api.saveScenarios` のようなコードで型補完が効くようになります。
-
-import { api } from '../../preload/index'
+import { ElectronAPI } from '@electron-toolkit/preload'
+import { api } from './index' // index.tsでエクスポートしたapiをインポート
 
 declare global {
   interface Window {
-    api: typeof api
+    electron: ElectronAPI
+    api: typeof api // apiの型をwindow.apiとして定義
   }
 }
