@@ -6,7 +6,6 @@ import React, { useRef, useState } from 'react'
 import {
   Box,
   VStack,
-  Heading,
   Button,
   Text,
   HStack,
@@ -18,23 +17,28 @@ import {
   AlertDialogContent,
   AlertDialogOverlay,
   useDisclosure,
-  Tooltip
+  Tooltip,
+  Divider
 } from '@chakra-ui/react'
 import { FaTrash, FaPlus, FaAngleLeft, FaAngleRight } from 'react-icons/fa'
 import { useAtom, useSetAtom } from 'jotai'
+import { motion } from 'framer-motion'
 import {
   scenariosAtom,
   createScenarioAtom,
-  activeScenarioIdAtom,
   deleteScenarioAtom,
-  isControlPanelOpenAtom
+  isControlPanelOpenAtom,
+  activeScenarioIdsAtom
 } from '@renderer/store/atoms'
+
+// アニメーション用のコンポーネント
+const MotionButton = motion(Button)
 
 export function ControlPanel(): React.JSX.Element {
   const [scenarios] = useAtom(scenariosAtom)
   const createScenario = useSetAtom(createScenarioAtom)
   const deleteScenario = useSetAtom(deleteScenarioAtom)
-  const [activeId, setActiveId] = useAtom(activeScenarioIdAtom)
+  const [activeIds, setActiveIds] = useAtom(activeScenarioIdsAtom)
   const [isOpen, setIsOpen] = useAtom(isControlPanelOpenAtom)
 
   const { isOpen: isAlertOpen, onOpen: onAlertOpen, onClose: onAlertClose } = useDisclosure()
@@ -57,24 +61,30 @@ export function ControlPanel(): React.JSX.Element {
     await createScenario()
   }
 
+  const handleScenarioSelect = (scenarioId: string): void => {
+    setActiveIds((currentIds) => {
+      if (currentIds.includes(scenarioId)) {
+        return currentIds.filter((id) => id !== scenarioId)
+      } else {
+        return [...currentIds, scenarioId]
+      }
+    })
+  }
+
   return (
     <>
       <Box
-        w={isOpen ? '250px' : '60px'}
+        w={isOpen ? '300px' : '60px'} // 幅を広げる
         h="100vh"
         bg="brand.white"
-        p={2}
-        boxShadow="md"
+        p={4} // 余白を調整
+        boxShadow="lg" // 影を少し強く
         zIndex={10}
-        transition="width 0.2s"
+        transition="width 0.3s ease-in-out" // アニメーションを滑らかに
+        flexShrink={0}
       >
-        <VStack align="stretch" spacing={4}>
-          <HStack justifyContent={isOpen ? 'space-between' : 'center'}>
-            {isOpen && (
-              <Heading size="md" color="brand.main" pl={2} noOfLines={1}>
-                コントロール
-              </Heading>
-            )}
+        <VStack align="stretch" spacing={4} h="100%">
+          <HStack justifyContent="flex-end">
             <IconButton
               aria-label="Toggle Panel"
               icon={isOpen ? <FaAngleLeft /> : <FaAngleRight />}
@@ -84,64 +94,62 @@ export function ControlPanel(): React.JSX.Element {
           </HStack>
 
           <Tooltip label="新規シナリオ作成" isDisabled={isOpen} placement="right">
-            <Button
+            <MotionButton
               colorScheme="teal"
-              variant="solid"
               bg="brand.accent"
+              color="white"
               onClick={handleCreateNewScenario}
               justifyContent={isOpen ? 'flex-start' : 'center'}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              py={6} // ボタンの高さを調整
             >
               <FaPlus />
-              {isOpen && (
-                <Text ml={2} noOfLines={1}>
-                  新規作成
-                </Text>
-              )}
-            </Button>
+              {isOpen && <Text ml={3}>新しいシナリオ</Text>}
+            </MotionButton>
           </Tooltip>
 
-          {/* 🔽 ----- ここから修正 ----- 🔽 */}
-          {/* パネルが開いている時のみシナリオリスト全体を描画する */}
+          <Divider />
+
           {isOpen && (
-            <Box>
-              <Heading size="sm" mt={4} mb={2} noOfLines={1}>
-                保存されたシナリオ
-              </Heading>
+            <Box flex="1" overflowY="auto" pr={2}>
               {scenarios.length > 0 ? (
-                scenarios.map((scenario) => (
-                  <HStack key={scenario.id} w="100%">
-                    <Button
-                      variant={activeId === scenario.id ? 'solid' : 'ghost'}
-                      colorScheme={activeId === scenario.id ? 'teal' : 'gray'}
-                      bg={activeId === scenario.id ? 'brand.accent' : 'transparent'}
-                      color={activeId === scenario.id ? 'white' : 'inherit'}
-                      flex="1"
-                      justifyContent="flex-start"
-                      onClick={(): void => setActiveId(scenario.id)}
-                      _hover={{
-                        bg: activeId !== scenario.id ? 'gray.100' : 'brand.accent'
-                      }}
-                    >
-                      <Text noOfLines={1}>{scenario.title}</Text>
-                    </Button>
-                    <IconButton
-                      aria-label="Delete scenario"
-                      icon={<FaTrash />}
-                      variant="ghost"
-                      colorScheme="red"
-                      size="sm"
-                      onClick={(): void => handleDeleteClick(scenario.id)}
-                    />
-                  </HStack>
-                ))
+                scenarios.map((scenario) => {
+                  const isActive = activeIds.includes(scenario.id)
+                  return (
+                    <HStack key={scenario.id} w="100%" mb={2}>
+                      <MotionButton
+                        variant={isActive ? 'solid' : 'ghost'}
+                        colorScheme={isActive ? 'teal' : 'gray'}
+                        bg={isActive ? 'brand.accent' : 'transparent'}
+                        color={isActive ? 'white' : 'inherit'}
+                        flex="1"
+                        justifyContent="flex-start"
+                        onClick={() => handleScenarioSelect(scenario.id)}
+                        _hover={{ bg: !isActive ? 'gray.100' : 'brand.accent' }}
+                        whileHover={{ scale: isActive ? 1 : 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        <Text noOfLines={1}>{scenario.title}</Text>
+                      </MotionButton>
+                      <IconButton
+                        aria-label="Delete scenario"
+                        icon={<FaTrash />}
+                        variant="ghost"
+                        colorScheme="red"
+                        size="sm"
+                        onClick={(): void => handleDeleteClick(scenario.id)}
+                      />
+                    </HStack>
+                  )
+                })
               ) : (
-                <Text fontSize="sm" color="brand.darkGray">
+                <Text fontSize="sm" color="brand.darkGray" textAlign="center" mt={4}>
                   シナリオはありません
                 </Text>
               )}
             </Box>
           )}
-          {/* 🔼 ----- ここまで修正 ----- 🔼 */}
         </VStack>
       </Box>
 

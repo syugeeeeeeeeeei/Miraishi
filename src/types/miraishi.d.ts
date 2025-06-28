@@ -70,6 +70,20 @@ export type Overtime = {
 }
 
 /**
+ * 試用期間に関する設定を定義します。
+ */
+export type Probation = {
+  /** 試用期間の有無 */
+  enabled: boolean
+  /** 試用期間の月数 */
+  durationMonths: number
+  /** 期間中の基本給（月額） */
+  basicSalary: number
+  /** 期間中の固定残業代（月額） */
+  fixedOvertime: number
+}
+
+/**
  * 扶養家族に関する情報を定義します。
  */
 export type Dependents = {
@@ -115,6 +129,10 @@ export type Scenario = {
   allowances: Allowance[]
   /** 残業代の設定 */
   overtime: Overtime
+  /** 年間のボーナス支給額（固定） */
+  annualBonus: number
+  /** 試用期間の設定 */
+  probation: Probation
   /** 年間の給与成長率（%） */
   salaryGrowthRate: number
   /** 控除関連の設定 */
@@ -147,7 +165,7 @@ export type TaxSchema = {
   /** スキーマのバージョン */
   version: string
   /** 所得税の速算表 */
-  incomeTaxRates: IncomeTaxRate[] // 上のIncomeTaxRate型を参照
+  incomeTaxRates: IncomeTaxRate[]
   /** 住民税の標準税率 */
   residentTaxRate: number
   /** 社会保険料率 */
@@ -155,6 +173,12 @@ export type TaxSchema = {
     healthInsurance: { rate: number; maxStandardRemuneration: number }
     pension: { rate: number; maxStandardRemuneration: number }
     employmentInsurance: { rate: number }
+  }
+  /** 各種所得控除額 */
+  deductions: {
+    basic: number
+    spouse: number
+    dependent: number
   }
 }
 // --- ビュー（UI状態）関連の型定義 ---
@@ -174,7 +198,7 @@ export type GraphViewSettings = {
    * - `monthlyGross`: 月収（額面）
    * - `monthlyNet`: 月収（手取り）
    */
-  displayItem: 'grossAnnual' | 'netAnnual' | 'monthlyGross' | 'monthlyNet'
+  displayItem: ('grossAnnual' | 'netAnnual' | 'monthlyGross' | 'monthlyNet')[]
 }
 
 /**
@@ -200,11 +224,23 @@ export interface AnnualSalaryDetail {
   grossAnnualIncome: number
   netAnnualIncome: number
   totalDeductions: number
-  healthInsurance: number
-  pensionInsurance: number
-  employmentInsurance: number
-  incomeTax: number
-  residentTax: number
+
+  breakdown: {
+    income: {
+      annualBasicSalary: number
+      annualAllowances: number
+      annualBonus: number
+      annualFixedOvertime: number
+      annualVariableOvertime: number
+    }
+    deductions: {
+      healthInsurance: number
+      pensionInsurance: number
+      employmentInsurance: number
+      incomeTax: number
+      residentTax: number
+    }
+  }
 }
 
 /**

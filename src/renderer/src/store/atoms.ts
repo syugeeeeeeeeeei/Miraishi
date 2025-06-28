@@ -3,11 +3,19 @@
  * @description Jotaiを使用したグローバル状態管理のAtom定義
  */
 import { atom } from 'jotai'
-import type { Scenario, PredictionResult } from '@myTypes/miraishi'
+import type { Scenario, PredictionResult, GraphViewSettings } from '@myTypes/miraishi'
 
 // --- データ関連のAtom ---
 
 export const scenariosAtom = atom<Scenario[]>([])
+
+export const activeScenarioIdsAtom = atom<string[]>([])
+
+export const activeScenariosAtom = atom<Scenario[]>((get) => {
+  const scenarios = get(scenariosAtom)
+  const activeIds = get(activeScenarioIdsAtom)
+  return scenarios.filter((s) => activeIds.includes(s.id))
+})
 
 export const loadScenariosAtom = atom(null, async (_get, set) => {
   try {
@@ -28,6 +36,13 @@ export const createScenarioAtom = atom(null, async (_get, set) => {
         fixedOvertime: { enabled: false, amount: 0, hours: 0 },
         variableOvertime: { enabled: true, calculationMethod: 'basic' }
       },
+      annualBonus: 0,
+      probation: {
+        enabled: false,
+        durationMonths: 3,
+        basicSalary: 280000,
+        fixedOvertime: 0
+      },
       salaryGrowthRate: 2.5,
       deductions: {
         dependents: { hasSpouse: false, numberOfDependents: 0 },
@@ -35,8 +50,9 @@ export const createScenarioAtom = atom(null, async (_get, set) => {
       }
     }
     const result = await window.api.createScenario(newScenarioData)
-    if (result.success) {
+    if (result.success && result.scenario) {
       await set(loadScenariosAtom)
+      set(activeScenarioIdsAtom, [result.scenario.id])
     } else {
       console.error('Failed to create scenario:', result.error)
     }
@@ -64,9 +80,10 @@ export const deleteScenarioAtom = atom(null, async (get, set, scenarioId: string
     const result = await window.api.deleteScenario(scenarioId)
 
     if (result.success) {
-      if (get(activeScenarioIdAtom) === scenarioId) {
-        set(activeScenarioIdAtom, null)
-      }
+      set(
+        activeScenarioIdsAtom,
+        get(activeScenarioIdsAtom).filter((id) => id !== scenarioId)
+      )
       await set(loadScenariosAtom)
     } else {
       console.error('Failed to delete scenario:', result.error)
@@ -76,20 +93,53 @@ export const deleteScenarioAtom = atom(null, async (get, set, scenarioId: string
   }
 })
 
-// --- UI状態関連のAtom ---
+// --- UI状態・計算関連のAtom ---
 
-export const isControlPanelOpenAtom = atom(true) // デフォルトは開いた状態に
-
-// 🔽 ----- ここから修正 ----- 🔽
-/**
- * グラフドロワーの表示状態を管理するAtom
- */
+export const isControlPanelOpenAtom = atom(true)
 export const isGraphViewVisibleAtom = atom(false)
 
 /**
- * 計算結果をグローバルに保持するAtom
+ * グラフビューの表示設定
  */
-export const predictionResultAtom = atom<PredictionResult | null>(null)
-// 🔼 ----- ここまで修正 ----- 🔼
+export const graphViewSettingsAtom = atom<GraphViewSettings>({
+  predictionPeriod: 10,
+  averageOvertimeHours: 0,
+  displayItem: ['netAnnual']
+})
 
-export const activeScenarioIdAtom = atom<string | null>(null)
+/**
+ * 複数シナリオの計算結果を保持するAtom
+ * { scenarioId: string, result: PredictionResult } の配列
+ */
+export const predictionResultsAtom = atom<{ scenarioId: string; result: PredictionResult }[]>([])
+
+/**
+ * 選択中の全シナリオの計算を実行・更新するAtom
+ */
+export const calculatePredictionsAtom = atom(null, async (get, set) => {
+  const scenarios = get(activeScenariosAtom)
+  const settings = get(graphViewSettingsAtom)
+
+  if (scenarios.length === 0) {
+    set(predictionResultsAtom, [])
+    return
+  }
+
+  const results = await Promise.all(
+    scenarios.map(async (scenario) => {
+      const result = await window.api.calculatePrediction({
+        scenario,
+        settings
+      })
+      if ('details' in result) {
+        return { scenarioId: scenario.id, result }
+      }
+      return null
+    })
+  )
+
+  set(
+    predictionResultsAtom,
+    results.filter((r) => r !== null) as { scenarioId: string; result: PredictionResult }[]
+  )
+})

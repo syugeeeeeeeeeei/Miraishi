@@ -37,6 +37,16 @@ const overtimeSchema = z.object({
   variableOvertime: variableOvertimeSchema
 })
 
+// 🔽 ----- ここから追加 ----- 🔽
+// Probation
+const probationSchema = z.object({
+  enabled: z.boolean(),
+  durationMonths: z.number().int().min(0),
+  basicSalary: z.number().min(0),
+  fixedOvertime: z.number().min(0)
+})
+// 🔼 ----- ここまで追加 ----- 🔼
+
 // Deductions
 const dependentsSchema = z.object({
   hasSpouse: z.boolean(),
@@ -61,6 +71,8 @@ export const scenarioSchema = z.object({
   initialBasicSalary: z.number().min(0),
   allowances: z.array(allowanceSchema),
   overtime: overtimeSchema,
+  annualBonus: z.number().min(0),
+  probation: probationSchema, // 🔽 ----- ここに追加 ----- 🔽
   salaryGrowthRate: z.number().min(0),
   deductions: deductionsSchema,
   createdAt: z.date(),

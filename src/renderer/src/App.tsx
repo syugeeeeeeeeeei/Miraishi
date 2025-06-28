@@ -3,7 +3,7 @@
  * @description アプリケーションのルートコンポーネント
  */
 import React, { useEffect } from 'react'
-import { ChakraProvider, Flex } from '@chakra-ui/react'
+import { ChakraProvider, Flex, Box } from '@chakra-ui/react' // Box をインポート
 import { Provider as JotaiProvider, useSetAtom } from 'jotai'
 import {
   Chart as ChartJS,
@@ -20,7 +20,7 @@ import { theme } from './theme'
 import { loadScenariosAtom } from '@renderer/store/atoms'
 import { ControlPanel } from '@renderer/components/ControlPanel'
 import { DataView } from '@renderer/components/DataView'
-import { GraphView } from '@renderer/components/GraphView' // ◀◀◀ インポート
+import { GraphView } from '@renderer/components/GraphView'
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend)
 
@@ -32,11 +32,16 @@ function AppContent(): React.JSX.Element {
   }, [loadScenarios])
 
   return (
-    <Flex h="100vh" bg="brand.base" overflow="hidden">
+    // 🔽 ----- Flexのプロパティを修正 ----- 🔽
+    <Flex h="100vh" w="100vw" bg="brand.base" overflow="hidden">
       <ControlPanel />
-      <DataView />
-      <GraphView /> {/* ◀◀◀ ここでGraphViewを描画 */}
+      {/* DataViewをBoxで囲み、flexプロパティを設定 */}
+      <Box flex="1" minW={0}>
+        <DataView />
+      </Box>
+      <GraphView />
     </Flex>
+    // 🔼 ----- ここまで ----- 🔼
   )
 }
 

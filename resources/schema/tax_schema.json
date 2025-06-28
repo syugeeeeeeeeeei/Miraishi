@@ -22,5 +22,10 @@
     "employmentInsurance": {
       "rate": 0.006
     }
+  },
+  "deductions": {
+    "basic": 480000,
+    "spouse": 380000,
+    "dependent": 380000
   }
 }

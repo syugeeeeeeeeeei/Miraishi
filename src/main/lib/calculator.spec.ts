@@ -66,4 +66,58 @@ describe('calculatePrediction with realistic logic', () => {
     expect(year1.netAnnualIncome).toBeGreaterThan(2500000)
     expect(year1.netAnnualIncome).toBeLessThan(3000000)
   })
+
+  // 🔽 ----- ここからテストケースを追加 ----- 🔽
+  it('扶養控除とその他控除が適用されると、手取り額が増えること', () => {
+    const scenarioWithDeductions: Scenario = {
+      ...baseScenario,
+      deductions: {
+        dependents: { hasSpouse: true, numberOfDependents: 1 }, // 配偶者控除 + 扶養控除1人
+        otherDeductions: [{ id: 'ideco', name: 'iDeCo', amount: 276000 }] // 年間27.6万円の控除
+      }
+    }
+
+    const resultWithoutDeductions = calculatePrediction(baseScenario, realisticTaxSchema, 1)
+    const resultWithDeductions = calculatePrediction(scenarioWithDeductions, realisticTaxSchema, 1)
+
+    const netIncomeWithoutDeductions = resultWithoutDeductions.details[0].netAnnualIncome
+    const netIncomeWithDeductions = resultWithDeductions.details[0].netAnnualIncome
+
+    // 控除が増えたので、税金が減り、手取り額は増えるはず
+    expect(netIncomeWithDeductions).toBeGreaterThan(netIncomeWithoutDeductions)
+
+    // 所得税と住民税が減っていることを確認
+    expect(resultWithDeductions.details[0].incomeTax).toBeLessThan(
+      resultWithoutDeductions.details[0].incomeTax
+    )
+    expect(resultWithDeductions.details[0].residentTax).toBeLessThan(
+      resultWithoutDeductions.details[0].residentTax
+    )
+  })
+
+  it('期間設定された手当が、指定年数後に計算から除外されること', () => {
+    const scenarioWithTimedAllowance: Scenario = {
+      ...baseScenario,
+      allowances: [
+        {
+          id: 'timed-allowance',
+          name: '住宅手当',
+          type: 'fixed',
+          amount: 20000, // 月2万円
+          duration: { type: 'years', value: 2 } // 2年間のみ支給
+        }
+      ]
+    }
+
+    const result = calculatePrediction(scenarioWithTimedAllowance, realisticTaxSchema, 3)
+
+    const year2GrossIncome = result.details[1].grossAnnualIncome // 2年目
+    const year3GrossIncome = result.details[2].grossAnnualIncome // 3年目
+
+    // 2年目は手当(年間24万円)が加算されているはず
+    expect(year2GrossIncome).toBe(3600000 + 240000)
+    // 3年目は手当の期間が切れているので、基本給のみのはず
+    expect(year3GrossIncome).toBe(3600000)
+  })
+  // 🔼 ----- ここまでテストケースを追加 ----- 🔼
 })

@@ -9,7 +9,7 @@ import icon from '../../resources/icon.png?asset'
 import Store from 'electron-store'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
-import type { Scenario, TaxSchema, PredictionResult } from '../types/miraishi'
+import type { Scenario, TaxSchema, PredictionResult, GraphViewSettings } from '../types/miraishi'
 import { scenarioSchema } from './lib/validators'
 import { calculatePrediction } from './lib/calculator'
 
@@ -100,15 +100,12 @@ app.whenReady().then(() => {
 
   ipcMain.handle('update-scenario', (_, receivedScenario: Scenario) => {
     try {
-      // 🔽 ----- ここから修正 ----- 🔽
-      // IPC通信で文字列に変換された日付をDateオブジェクトに戻す
       const scenarioToValidate: Scenario = {
         ...receivedScenario,
         createdAt: new Date(receivedScenario.createdAt),
-        updatedAt: new Date() // 更新日時は常に新しい日時に
+        updatedAt: new Date()
       }
 
-      // Zodでバリデーション
       scenarioSchema.parse(scenarioToValidate)
 
       const scenarios = store.get('scenarios', [])
@@ -119,7 +116,6 @@ app.whenReady().then(() => {
       scenarios[index] = scenarioToValidate
       store.set('scenarios', scenarios)
       return { success: true, scenario: scenarioToValidate }
-      // 🔼 ----- ここまで修正 ----- 🔼
     } catch (error) {
       console.error('Failed to update scenario:', error)
       if (error instanceof Error) {
@@ -151,13 +147,15 @@ app.whenReady().then(() => {
 
   ipcMain.handle(
     'calculate-prediction',
-    (_, scenario: Scenario): PredictionResult | { success: false; error: string } => {
+    (
+      _,
+      { scenario, settings }: { scenario: Scenario; settings: GraphViewSettings }
+    ): PredictionResult | { success: false; error: string } => {
       try {
         if (!taxSchema) {
           throw new Error('Tax schema is not loaded.')
         }
-        // ここでは予測期間を10年で固定します
-        const result = calculatePrediction(scenario, taxSchema, 10)
+        const result = calculatePrediction({ scenario, settings }, taxSchema)
         return result
       } catch (error) {
         console.error('Failed to calculate prediction:', error)
