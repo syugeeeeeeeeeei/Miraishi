@@ -34,7 +34,7 @@ const formatYen = (value: number): string => {
 const BreakdownPanel: React.FC<{ breakdown: PredictionResult['details'][0]['breakdown'] }> = ({
   breakdown
 }) => (
-  <Box p={4}>
+  <Box p={4} bg={'gray.50'}>
     <SimpleGrid
       columns={2}
       spacing={4}
