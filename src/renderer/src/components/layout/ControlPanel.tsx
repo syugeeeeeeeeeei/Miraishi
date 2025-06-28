@@ -8,7 +8,10 @@ import {
   Box,
   HStack,
   Separator,
-  Input, Spinner, Alert, Icon
+  Input,
+  Spinner,
+  Alert,
+  Icon
 } from '@chakra-ui/react'
 import { RxPencil2, RxHamburgerMenu, RxCross2 } from 'react-icons/rx'
 import { GoGear, GoSearch } from 'react-icons/go'
@@ -28,10 +31,10 @@ type ScenarioListProps = {
 }
 
 const ScenarioList = ({
-                        scenariosLoadable,
-                        activeScenario,
-                        onScenarioSelect,
-                      }: ScenarioListProps): React.JSX.Element => {
+  scenariosLoadable,
+  activeScenario,
+  onScenarioSelect
+}: ScenarioListProps): React.JSX.Element => {
   switch (scenariosLoadable.state) {
     case 'loading':
       return <Spinner />
@@ -40,9 +43,7 @@ const ScenarioList = ({
         <Alert.Root status="error">
           <Alert.Indicator />
           <Alert.Content>
-            <Alert.Description>
-              Failed to load scenarios.
-            </Alert.Description>
+            <Alert.Description>Failed to load scenarios.</Alert.Description>
           </Alert.Content>
         </Alert.Root>
       )
@@ -57,7 +58,7 @@ const ScenarioList = ({
               bg={activeScenario?.id === scenario.id ? 'teal.600' : 'transparent'}
               color={activeScenario?.id === scenario.id ? 'white' : 'inherit'}
               _hover={{
-                bg: activeScenario?.id !== scenario.id ? 'whiteAlpha.200' : 'teal.700',
+                bg: activeScenario?.id !== scenario.id ? 'whiteAlpha.200' : 'teal.700'
               }}
               cursor="pointer"
               onClick={() => onScenarioSelect(scenario)}
@@ -70,7 +71,7 @@ const ScenarioList = ({
                 aria-label="Scenario options"
                 variant="ghost"
                 size="sm"
-                rounded={"lg"}
+                rounded={'lg'}
                 onClick={(e) => {
                   e.stopPropagation()
                   // TODO: Implement menu (rename, delete, export)
@@ -86,7 +87,6 @@ const ScenarioList = ({
   }
   return <></>
 }
-
 
 interface ControlPanelProps {
   panelToggle: () => void // パネルの開閉を切り替えるための関数
@@ -153,19 +153,19 @@ export const ControlPanel = (): React.JSX.Element => {
         baseSalary: 3000000,
         allowances: [],
         overtimeHours: 0,
-        performanceBonus: 0,
+        performanceBonus: 0
       },
       deductions: {
         healthInsurance: 0,
         pension: 0,
         employmentInsurance: 0,
         incomeTax: 0,
-        residentTax: 0,
+        residentTax: 0
       },
       settings: {
         promotionRate: 1.03,
-        calculationMode: 'simple',
-      },
+        calculationMode: 'simple'
+      }
     }
     setActiveScenario(newScenario)
     if (!isOpen) {
@@ -215,7 +215,7 @@ export const ControlPanel = (): React.JSX.Element => {
             style={{
               width: isOpen || isSearchFocused ? '100%' : '38px',
               transition: 'width 0.2s',
-              paddingLeft: '2.5rem',
+              paddingLeft: '2.5rem'
             }}
           />
         </InputGroup>

@@ -1,18 +1,11 @@
-import {
-  Box,
-  FormControl,
-  FormLabel,
-  Heading,
-  NumberInput,
-  VStack,
-} from '@chakra-ui/react';
-import { Person } from '../../../../../types/scenario';
+import { Box, FormControl, FormLabel, Heading, NumberInput, VStack } from '@chakra-ui/react'
+import { Person } from '../../../../../types/scenario'
 
 // Propsの型定義
 interface InputSectionProps {
-  person: Person;
-  setPerson: (person: Person) => void;
-  title: string;
+  person: Person
+  setPerson: (person: Person) => void
+  title: string
 }
 
 export const InputSection = ({ person, setPerson, title }: InputSectionProps) => {
@@ -20,19 +13,18 @@ export const InputSection = ({ person, setPerson, title }: InputSectionProps) =>
   // ネストされたオブジェクトのプロパティを安全に更新します
   const handleChange = (path: string, value: number) => {
     // パスをキーの配列に分割
-    const keys = path.split('.');
+    const keys = path.split('.')
     // personオブジェクトをディープコピーして、元の状態を直接変更しないようにする
-    const newPerson = JSON.parse(JSON.stringify(person));
+    const newPerson = JSON.parse(JSON.stringify(person))
 
-    let current = newPerson;
+    let current = newPerson
     for (let i = 0; i < keys.length - 1; i++) {
-      current = current[keys[i]];
+      current = current[keys[i]]
     }
-    current[keys[keys.length - 1]] = isNaN(value) ? 0 : value;
+    current[keys[keys.length - 1]] = isNaN(value) ? 0 : value
 
-    setPerson(newPerson);
-  };
-
+    setPerson(newPerson)
+  }
 
   return (
     <Box>
@@ -59,7 +51,9 @@ export const InputSection = ({ person, setPerson, title }: InputSectionProps) =>
         </FormControl>
 
         {/* --- 収入 --- */}
-        <Heading size="sm" mt={4}>収入</Heading>
+        <Heading size="sm" mt={4}>
+          収入
+        </Heading>
         <FormControl>
           <FormLabel>給与収入</FormLabel>
           <NumberInput.Root
@@ -92,7 +86,9 @@ export const InputSection = ({ person, setPerson, title }: InputSectionProps) =>
         </FormControl>
 
         {/* --- 控除 --- */}
-        <Heading size="sm" mt={4}>控除</Heading>
+        <Heading size="sm" mt={4}>
+          控除
+        </Heading>
         <FormControl>
           <FormLabel>社会保険料</FormLabel>
           <NumberInput.Root
@@ -117,7 +113,9 @@ export const InputSection = ({ person, setPerson, title }: InputSectionProps) =>
           <FormLabel>地震保険料</FormLabel>
           <NumberInput.Root
             value={person.deduction.earthquakeInsurance}
-            onChange={(details) => handleChange('deduction.earthquakeInsurance', details.valueAsNumber)}
+            onChange={(details) =>
+              handleChange('deduction.earthquakeInsurance', details.valueAsNumber)
+            }
             min={0}
           >
             <NumberInput.Field />
@@ -135,5 +133,5 @@ export const InputSection = ({ person, setPerson, title }: InputSectionProps) =>
         </FormControl>
       </VStack>
     </Box>
-  );
-};
+  )
+}

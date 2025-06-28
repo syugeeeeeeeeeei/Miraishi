@@ -1,20 +1,11 @@
-import { useAtom } from 'jotai';
-import { mainPersonAtom, spouseAtom } from '../../atoms/scenarioAtoms';
-import { InputSection } from './components/InputSection';
-import {
-  Box,
-  Tabs,
-  TabList,
-  Tab,
-  TabPanels,
-  TabPanel,
-  Divider,
-  VStack,
-} from '@chakra-ui/react';
+import { useAtom } from 'jotai'
+import { mainPersonAtom, spouseAtom } from '../../atoms/scenarioAtoms'
+import { InputSection } from './components/InputSection'
+import { Box, Tabs, TabList, Tab, TabPanels, TabPanel, Divider, VStack } from '@chakra-ui/react'
 
 export const DataView = () => {
-  const [mainPerson, setMainPerson] = useAtom(mainPersonAtom);
-  const [spouse, setSpouse] = useAtom(spouseAtom);
+  const [mainPerson, setMainPerson] = useAtom(mainPersonAtom)
+  const [spouse, setSpouse] = useAtom(spouseAtom)
 
   return (
     <Box p={4}>
@@ -39,5 +30,5 @@ export const DataView = () => {
         {/* ここに次のステップで扶養家族のセクションを追加します */}
       </VStack>
     </Box>
-  );
-};
+  )
+}
