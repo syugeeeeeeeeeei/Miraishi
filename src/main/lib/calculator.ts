@@ -1,6 +1,6 @@
 /**
  * @file src/main/lib/calculator.ts
- * @description 給与予測計算エンジンのコアロジック
+ * @description 給与予測計算エンジンのコアロジック (最適化版)
  */
 import type {
   AnnualSalaryDetail,
@@ -17,6 +17,22 @@ export function calculatePrediction(
   const details: AnnualSalaryDetail[] = []
   let currentBasicSalary = scenario.initialBasicSalary
 
+  // --- 🔽 最適化: 事前計算 🔽 ---
+  const monthlyAllowancesForOvertime = (scenario.allowances ?? []).reduce((total, allowance) => {
+    if (allowance.type === 'fixed') {
+      return total + allowance.amount
+    }
+    return total
+  }, 0)
+
+  const fixedAnnualAllowances = (scenario.allowances ?? []).reduce((total, allowance) => {
+    if (allowance.type === 'fixed' && allowance.duration.type === 'unlimited') {
+      return total + allowance.amount * 12
+    }
+    return total
+  }, 0)
+  // --- 🔼 最適化: 事前計算 🔼 ---
+
   for (let year = 1; year <= settings.predictionPeriod; year++) {
     let annualBasicSalary: number
     let annualAllowances: number
@@ -24,14 +40,8 @@ export function calculatePrediction(
     let annualVariableOvertime: number
     let grossAnnualIncome: number
 
-    const monthlyAllowancesForOvertime = (scenario.allowances ?? []).reduce((total, allowance) => {
-      if (allowance.type === 'fixed') {
-        return total + allowance.amount
-      }
-      return total
-    }, 0)
-
-    let monthlySalaryForOvertimeCalc: number
+    // --- 🔽 最適化: 残業代計算を効率化 🔽 ---
+    let monthlySalaryForOvertimeCalc: number;
     if (year === 1 && scenario.probation?.enabled) {
       const probationMonths = scenario.probation.durationMonths
       const afterProbationMonths = 12 - probationMonths
@@ -49,11 +59,12 @@ export function calculatePrediction(
       : 0
     const overtimeHours = Math.max(0, settings.averageOvertimeHours - fixedHours)
     annualVariableOvertime = hourlyWage * 1.25 * overtimeHours * 12
+    // --- 🔼 最適化: 残業代計算を効率化 🔼 ---
 
     if (year === 1 && scenario.probation?.enabled) {
+      const probationMonths = scenario.probation.durationMonths
       let totalBasicSalaryForYear1 = 0
       let totalFixedOvertimeForYear1 = 0
-      const probationMonths = scenario.probation.durationMonths
 
       for (let month = 1; month <= 12; month++) {
         if (month <= probationMonths) {
@@ -66,66 +77,48 @@ export function calculatePrediction(
           }
         }
       }
-
       annualBasicSalary = totalBasicSalaryForYear1
       annualFixedOvertime = totalFixedOvertimeForYear1
-
-      annualAllowances = (scenario.allowances ?? []).reduce((total, allowance) => {
-        if (allowance.type === 'fixed') {
-          return total + allowance.amount * 12
-        } else {
-          return total + scenario.initialBasicSalary * 12 * (allowance.amount / 100)
-        }
-      }, 0)
-
-      grossAnnualIncome =
-        annualBasicSalary +
-        annualFixedOvertime +
-        annualAllowances +
-        (scenario.annualBonus ?? 0) +
-        annualVariableOvertime
     } else {
       annualBasicSalary = currentBasicSalary * 12
       annualFixedOvertime = scenario.overtime?.fixedOvertime?.enabled
         ? (scenario.overtime.fixedOvertime.amount ?? 0) * 12
         : 0
-
-      annualAllowances = (scenario.allowances ?? []).reduce((total, allowance) => {
-        let isAllowanceActive = false
-        switch (allowance.duration.type) {
-          case 'unlimited':
-            isAllowanceActive = true
-            break
-          case 'years':
-            if (year <= allowance.duration.value) {
-              isAllowanceActive = true
-            }
-            break
-          case 'months':
-            if (year * 12 <= allowance.duration.value) {
-              isAllowanceActive = true
-            }
-            break
-        }
-
-        if (isAllowanceActive) {
-          if (allowance.type === 'fixed') {
-            return total + allowance.amount * 12
-          } else {
-            return total + annualBasicSalary * (allowance.amount / 100)
-          }
-        }
-        return total
-      }, 0)
-
-      grossAnnualIncome =
-        annualBasicSalary +
-        annualFixedOvertime +
-        annualAllowances +
-        (scenario.annualBonus ?? 0) +
-        annualVariableOvertime
     }
 
+    // --- 🔽 最適化: 手当計算を効率化 🔽 ---
+    // 事前計算した固定手当をベースに、期間や割合が変動するものだけをループ内で計算
+    annualAllowances = fixedAnnualAllowances + (scenario.allowances ?? []).reduce((total, allowance) => {
+      let isAllowanceActive = false
+      if(allowance.duration.type !== 'unlimited') {
+        switch (allowance.duration.type) {
+          case 'years':
+            if (year <= allowance.duration.value) isAllowanceActive = true
+            break
+          case 'months':
+            if (year * 12 <= allowance.duration.value) isAllowanceActive = true
+            break
+        }
+      }
+
+      if (isAllowanceActive && allowance.type === 'fixed') {
+        return total + allowance.amount * 12
+      }
+      if (allowance.type === 'percentage') { // 割合ベースは毎年計算が必要
+        return total + annualBasicSalary * (allowance.amount / 100)
+      }
+      return total
+    }, 0)
+    // --- 🔼 最適化: 手当計算を効率化 🔼 ---
+
+    grossAnnualIncome =
+      annualBasicSalary +
+      annualFixedOvertime +
+      annualAllowances +
+      (scenario.annualBonus ?? 0) +
+      annualVariableOvertime
+
+    // ... (以降の控除額、税金計算は変更なし) ...
     const monthlyGrossIncome = grossAnnualIncome / 12
     const standardMonthlyRemuneration = Math.min(
       Math.round(monthlyGrossIncome / 1000) * 1000,

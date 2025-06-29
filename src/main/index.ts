@@ -23,7 +23,6 @@ const store = new Store<{ scenarios: Scenario[] }>({
   }
 })
 
-// 🔽 ----- 初期計算結果を保持するキャッシュを追加 ----- 🔽
 const initialCalculationCache = new Map<string, PredictionResult>()
 
 const taxSchemaPath = join(__dirname, '../../resources/schema/tax_schema.json')
@@ -83,7 +82,7 @@ app.whenReady().then((): void => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // 🔽 ----- 投機的バックグラウンド計算のロジック ----- 🔽
+  // 投機的バックグラウンド計算
   const scenarios = store.get('scenarios', [])
   if (scenarios.length > 0 && taxSchema) {
     const firstScenario = scenarios[0]
@@ -92,17 +91,18 @@ app.whenReady().then((): void => {
       averageOvertimeHours: 0,
       displayItem: ['netAnnual']
     }
+    const settingsString = JSON.stringify(defaultSettings)
+    const settingsHash = crypto.createHash('sha256').update(settingsString).digest('hex')
+    const cacheKey = `${firstScenario.id}-${settingsHash}`
 
-    console.log(`Speculative calculation started for scenario: ${firstScenario.title}`)
+    console.log(`Speculative calculation started for key: ${cacheKey}`)
     try {
       const result = calculatePrediction(
         { scenario: firstScenario, settings: defaultSettings },
         taxSchema
       )
-      initialCalculationCache.set(firstScenario.id, result)
-      console.log(
-        `Speculative calculation finished and cached for scenario: ${firstScenario.title}`
-      )
+      initialCalculationCache.set(cacheKey, result)
+      console.log(`Speculative calculation finished and cached for key: ${cacheKey}`)
     } catch (e) {
       console.error('Speculative calculation failed:', e)
     }
@@ -127,17 +127,13 @@ app.whenReady().then((): void => {
           createdAt: now,
           updatedAt: now
         }
-
         scenarioSchema.parse(newScenario)
-
         const scenarios = store.get('scenarios', [])
         scenarios.push(newScenario)
         store.set('scenarios', scenarios)
         return { success: true, scenario: newScenario }
       } catch (error) {
-        if (error instanceof Error) {
-          return { success: false, error: error.message }
-        }
+        if (error instanceof Error) return { success: false, error: error.message }
         return { success: false, error: 'An unknown error occurred' }
       }
     }
@@ -150,22 +146,25 @@ app.whenReady().then((): void => {
         createdAt: new Date(receivedScenario.createdAt),
         updatedAt: new Date()
       }
-
       scenarioSchema.parse(scenarioToValidate)
-
       const scenarios = store.get('scenarios', [])
       const index = scenarios.findIndex((s) => s.id === scenarioToValidate.id)
-      if (index === -1) {
-        throw new Error('Scenario not found')
+      if (index === -1) throw new Error('Scenario not found')
+
+      // このシナリオに関連する全てのキャッシュを無効化
+      for (const key of initialCalculationCache.keys()) {
+        if (key.startsWith(scenarioToValidate.id)) {
+          initialCalculationCache.delete(key);
+        }
       }
+      console.log(`All caches invalidated for scenario: ${scenarioToValidate.title}`);
+
       scenarios[index] = scenarioToValidate
       store.set('scenarios', scenarios)
       return { success: true, scenario: scenarioToValidate }
     } catch (error) {
       console.error('Failed to update scenario:', error)
-      if (error instanceof Error) {
-        return { success: false, error: error.message }
-      }
+      if (error instanceof Error) return { success: false, error: error.message }
       return { success: false, error: 'An unknown error occurred' }
     }
   })
@@ -174,18 +173,14 @@ app.whenReady().then((): void => {
     try {
       const scenarios = store.get('scenarios', [])
       const filteredScenarios = scenarios.filter((s) => s.id !== scenarioId)
-
       if (scenarios.length === filteredScenarios.length) {
         throw new Error('Scenario not found for deletion')
       }
-
       store.set('scenarios', filteredScenarios)
       return { success: true }
     } catch (error) {
       console.error('Failed to delete scenario:', error)
-      if (error instanceof Error) {
-        return { success: false, error: error.message }
-      }
+      if (error instanceof Error) return { success: false, error: error.message }
       return { success: false, error: 'An unknown error occurred' }
     }
   })
@@ -196,25 +191,29 @@ app.whenReady().then((): void => {
       _,
       { scenario, settings }: { scenario: Scenario; settings: GraphViewSettings }
     ): PredictionResult | { success: false; error: string } => {
-      // 🔽 ----- キャッシュを確認し、あればそれを返すロジック ----- 🔽
-      if (initialCalculationCache.has(scenario.id)) {
-        console.log(`Returning cached result for scenario: ${scenario.title}`)
-        const cachedResult = initialCalculationCache.get(scenario.id)!
-        initialCalculationCache.delete(scenario.id) // キャッシュは一度使ったら削除
+
+      const settingsString = JSON.stringify(settings);
+      const settingsHash = crypto.createHash('sha256').update(settingsString).digest('hex');
+      const cacheKey = `${scenario.id}-${settingsHash}`;
+
+      if (initialCalculationCache.has(cacheKey)) {
+        console.log(`Returning cached result for key: ${cacheKey}`)
+        const cachedResult = initialCalculationCache.get(cacheKey)!
         return cachedResult
       }
 
       try {
-        if (!taxSchema) {
-          throw new Error('Tax schema is not loaded.')
-        }
+        if (!taxSchema) throw new Error('Tax schema is not loaded.')
+
         const result = calculatePrediction({ scenario, settings }, taxSchema)
+
+        initialCalculationCache.set(cacheKey, result);
+        console.log(`Result cached with key: ${cacheKey}`);
+
         return result
       } catch (error) {
         console.error('Failed to calculate prediction:', error)
-        if (error instanceof Error) {
-          return { success: false, error: error.message }
-        }
+        if (error instanceof Error) return { success: false, error: error.message }
         return { success: false, error: 'An unknown error occurred during calculation' }
       }
     }

@@ -3,8 +3,8 @@
  * @description アプリケーションのルートコンポーネント
  */
 import React, { useEffect } from 'react'
-import { ChakraProvider, Flex, VStack } from '@chakra-ui/react' // Box, HStack, Heading, Text, Image, Spacer, Button をインポート
-import { Provider as JotaiProvider, useSetAtom } from 'jotai' // useAtomValue をインポート
+import { ChakraProvider, Flex, VStack } from '@chakra-ui/react'
+import { Provider as JotaiProvider, useSetAtom } from 'jotai'
 import {
   CategoryScale,
   Chart as ChartJS,
@@ -17,11 +17,13 @@ import {
 } from 'chart.js'
 
 import { theme } from './theme'
-import { loadScenariosAtom } from '@renderer/store/atoms' // predictionResultsAtom, isGraphViewVisibleAtom をインポート
+import { loadScenariosAtom } from '@renderer/store/atoms'
+// 🔽 --- パス修正 --- 🔽
 import { ControlPanel } from '@renderer/components/ControlPanel'
 import { DataView } from '@renderer/components/DataView'
 import { GraphView } from '@renderer/components/GraphView'
 import { Header } from '@renderer/components/Header'
+// 🔼 --- パス修正 --- 🔼
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend)
 
@@ -34,11 +36,8 @@ function AppContent(): React.JSX.Element {
 
   return (
     <Flex h="100vh" w="100vw" bg="brand.base" overflow="hidden" flexDirection="column">
-      {/* メインコンテンツ領域（ControlPanel, DataView, GraphView） */}
       <Flex flex="1" overflow="hidden">
         <ControlPanel />
-
-        {/* DataViewをBoxで囲み、flexプロパティを設定 */}
         <VStack w={'100%'} h={'100vh'} spacing={0}>
           <Header />
           <DataView />
