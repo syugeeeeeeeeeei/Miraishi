@@ -1,6 +1,6 @@
 /**
  * @file src/renderer/src/components/DataView.tsx
- * @description 選択された複数シナリオをスライド形式で表示・編集するコンポーネント
+ * @description 選択された複数シナリオをスライド形式で表示・編集するコンポーネント（スクロール終端検知・最終版）
  */
 import React, { useState, useEffect, useTransition, useRef } from 'react'
 import {
@@ -26,22 +26,25 @@ import {
   SliderFilledTrack,
   SliderThumb,
   Badge,
-  Spacer,
-  SimpleGrid
+  SimpleGrid,
+  Center,
+  Icon
 } from '@chakra-ui/react'
-import { FaPlus, FaTrash, FaChevronLeft, FaChevronRight } from 'react-icons/fa' // FaChartLine, Image のインポートを削除
+import { FaPlus, FaTrash, FaChevronLeft, FaChevronRight } from 'react-icons/fa'
 import { useAtom, useSetAtom, useAtomValue } from 'jotai'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, Variants } from 'framer-motion'
 import {
   activeScenariosAtom,
   updateScenarioAtom,
   predictionResultsAtom,
   calculatePredictionsAtom,
-  graphViewSettingsAtom
+  graphViewSettingsAtom,
+  createScenarioAtom
 } from '@renderer/store/atoms'
 import type { Scenario, Allowance, PredictionResult } from '@myTypes/miraishi'
 import { v4 as uuidv4 } from 'uuid'
 import { CalculationResult } from './CalculationResult'
+import { FiTrendingUp } from 'react-icons/fi'
 
 // -----------------------------------------------------------------------------
 // DataViewCard
@@ -57,17 +60,103 @@ function DataViewCard({ scenario, predictionResult }: DataViewCardProps): React.
   const [editableScenario, setEditableScenario] = useState<Scenario>(scenario)
   const toast = useToast()
   const graphViewSettings = useAtomValue(graphViewSettingsAtom)
+  const [currentView, setCurrentView] = useState<'input' | 'result'>('input')
+  const [slideDirection, setSlideDirection] = useState<'up' | 'down'>('down')
+  const [isWheeling, setIsWheeling] = useState(false)
+  const bounceRef = useRef<'top' | 'bottom' | null>(null)
 
-  // 🔽 追加：画面切り替え用のステートとRef
-  const [currentScreen, setCurrentScreen] = useState(0) // 0:入力画面, 1:計算結果画面
-  const scrollContainerRef = useRef<HTMLDivElement>(null) // スクロール領域の参照
-  // 🔼
-
+  // シナリオが切り替わったら、必ず入力ビューに戻す
   useEffect((): void => {
     setEditableScenario(scenario)
-    // シナリオが変更されたら入力画面にリセット
-    setCurrentScreen(0)
+    setCurrentView('input')
+    bounceRef.current = null
   }, [scenario])
+
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>): void => {
+    if (isWheeling) {
+      e.stopPropagation()
+      return
+    }
+
+    let currentTarget = e.target as HTMLElement
+    while (currentTarget && currentTarget !== e.currentTarget) {
+      const isScrollable = currentTarget.scrollHeight > currentTarget.clientHeight
+      if (isScrollable) {
+        const atTop = currentTarget.scrollTop === 0
+        const atBottom =
+          currentTarget.scrollTop + currentTarget.clientHeight >= currentTarget.scrollHeight
+
+        if (e.deltaY > 0) {
+          // 下スクロール
+          if (!atBottom) {
+            bounceRef.current = null
+            return
+          }
+          if (bounceRef.current !== 'bottom') {
+            bounceRef.current = 'bottom'
+            return
+          }
+        } else if (e.deltaY < 0) {
+          // 上スクロール
+          if (!atTop) {
+            bounceRef.current = null
+            return
+          }
+          if (bounceRef.current !== 'top') {
+            bounceRef.current = 'top'
+            return
+          }
+        }
+      }
+      currentTarget = currentTarget.parentElement as HTMLElement
+    }
+
+    bounceRef.current = null // 内部スクロールがなければ常にリセット
+
+    const handleTransition = (direction: 'up' | 'down', nextView: 'input' | 'result') => {
+      setIsWheeling(true)
+      setSlideDirection(direction)
+      setCurrentView(nextView)
+      setTimeout(() => setIsWheeling(false), 500) // 500msのスロットリング
+    }
+
+    const { deltaY } = e
+    const canGoToResult = !!predictionResult
+
+    // 下方向スクロール
+    if (deltaY > 20) {
+      if (currentView === 'input' && canGoToResult) {
+        handleTransition('up', 'result')
+      } else if (currentView === 'result') {
+        handleTransition('up', 'input')
+      }
+    }
+    // 上方向スクロール
+    else if (deltaY < -20) {
+      if (currentView === 'result') {
+        handleTransition('down', 'input')
+      } else if (currentView === 'input' && canGoToResult) {
+        handleTransition('down', 'result')
+      }
+    }
+  }
+
+  const slideVariants: Variants = {
+    initial: (direction: 'up' | 'down') => ({
+      y: direction === 'up' ? '100%' : '-100%',
+      opacity: 0
+    }),
+    animate: {
+      y: 0,
+      opacity: 1,
+      transition: { duration: 0.4, ease: 'easeInOut' }
+    },
+    exit: (direction: 'up' | 'down') => ({
+      y: direction === 'up' ? '-100%' : '100%',
+      opacity: 0,
+      transition: { duration: 0.4, ease: 'easeInOut' }
+    })
+  }
 
   const updateNestedState = (path: string, value: any): void => {
     setEditableScenario((prev) => {
@@ -124,30 +213,335 @@ function DataViewCard({ scenario, predictionResult }: DataViewCardProps): React.
     }))
   }
 
-  // 🔽 追加：画面切り替えハンドラー
-  const handleNextScreen = (): void => {
-    if (currentScreen < 1) { // 2画面しかないので最大1
-      setCurrentScreen(currentScreen + 1)
-    }
-  }
+  const InputView = (): React.JSX.Element => (
+    <Box h="100%" w="100%" overflowY="auto" p={{ base: 3, md: 6 }}>
+      <VStack spacing={4} align="stretch">
+        <Box bg="white" p={4} borderRadius="md" boxShadow="sm">
+          <Heading size="sm" mb={4}>
+            給与・賞与
+          </Heading>
+          <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+            <FormControl>
+              <FormLabel fontSize="sm">基本給 (月額)</FormLabel>
+              <NumberInput
+                size="sm"
+                value={editableScenario.initialBasicSalary ?? 0}
+                onChange={(_, vN): void =>
+                  updateNestedState('initialBasicSalary', isNaN(vN) ? 0 : vN)
+                }
+                min={0}
+              >
+                <NumberInputField placeholder="例: 300000" bg="white" onKeyDown={handleKeyDown} />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel fontSize="sm">年間ボーナス (総額)</FormLabel>
+              <NumberInput
+                size="sm"
+                value={editableScenario.annualBonus ?? 0}
+                onChange={(_, vN): void => updateNestedState('annualBonus', isNaN(vN) ? 0 : vN)}
+                min={0}
+              >
+                <NumberInputField placeholder="例: 600000" bg="white" onKeyDown={handleKeyDown} />
+              </NumberInput>
+            </FormControl>
+            <FormControl>
+              <FormLabel fontSize="sm">給与成長率 (年率 %)</FormLabel>
+              <NumberInput
+                size="sm"
+                value={editableScenario.salaryGrowthRate ?? 0}
+                onChange={(_, vN): void =>
+                  updateNestedState('salaryGrowthRate', isNaN(vN) ? 0 : vN)
+                }
+                min={0}
+                precision={1}
+                step={0.1}
+              >
+                <NumberInputField placeholder="例: 2.5" bg="white" onKeyDown={handleKeyDown} />
+              </NumberInput>
+            </FormControl>
+          </SimpleGrid>
+        </Box>
+        <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={4} width="100%">
+          <VStack spacing={4} align="stretch">
+            <VStack spacing={3} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
+              <FormControl display="flex" alignItems="center" justifyContent="space-between">
+                <FormLabel htmlFor={`probation-enabled-${scenario.id}`} mb="0" fontWeight="bold">
+                  試用期間
+                </FormLabel>
+                <Switch
+                  id={`probation-enabled-${scenario.id}`}
+                  isChecked={editableScenario.probation?.enabled ?? false}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
+                    updateNestedState('probation.enabled', e.target.checked)
+                  }
+                />
+              </FormControl>
+              {editableScenario.probation?.enabled && (
+                <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3} pt={2}>
+                  <FormControl>
+                    <FormLabel fontSize="sm" mb={1}>
+                      期間 (ヶ月)
+                    </FormLabel>
+                    <NumberInput
+                      size="sm"
+                      value={editableScenario.probation?.durationMonths ?? 0}
+                      onChange={(_, vN): void =>
+                        updateNestedState('probation.durationMonths', isNaN(vN) ? 0 : vN)
+                      }
+                      min={0}
+                    >
+                      <NumberInputField onKeyDown={handleKeyDown} bg="white" />
+                    </NumberInput>
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel fontSize="sm" mb={1}>
+                      基本給 (月額)
+                    </FormLabel>
+                    <NumberInput
+                      size="sm"
+                      value={editableScenario.probation?.basicSalary ?? 0}
+                      onChange={(_, vN): void =>
+                        updateNestedState('probation.basicSalary', isNaN(vN) ? 0 : vN)
+                      }
+                      min={0}
+                    >
+                      <NumberInputField onKeyDown={handleKeyDown} bg="white" />
+                    </NumberInput>
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel fontSize="sm" mb={1}>
+                      固定残業代 (月額)
+                    </FormLabel>
+                    <NumberInput
+                      size="sm"
+                      value={editableScenario.probation?.fixedOvertime ?? 0}
+                      onChange={(_, vN): void =>
+                        updateNestedState('probation.fixedOvertime', isNaN(vN) ? 0 : vN)
+                      }
+                      min={0}
+                    >
+                      <NumberInputField onKeyDown={handleKeyDown} bg="white" />
+                    </NumberInput>
+                  </FormControl>
+                </SimpleGrid>
+              )}
+            </VStack>
+            <VStack spacing={3} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
+              <Heading size="sm">固定残業代</Heading>
+              <FormControl display="flex" alignItems="center" justifyContent="space-between">
+                <FormLabel htmlFor={`fixed-overtime-${scenario.id}`} mb="0" fontSize="sm">
+                  固定残業代制度
+                </FormLabel>
+                <Switch
+                  id={`fixed-overtime-${scenario.id}`}
+                  size="sm"
+                  isChecked={editableScenario.overtime?.fixedOvertime?.enabled ?? false}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
+                    updateNestedState('overtime.fixedOvertime.enabled', e.target.checked)
+                  }
+                />
+              </FormControl>
+              {editableScenario.overtime?.fixedOvertime?.enabled && (
+                <HStack>
+                  <FormControl>
+                    <FormLabel fontSize="sm">金額 (月額)</FormLabel>
+                    <NumberInput
+                      size="sm"
+                      value={editableScenario.overtime?.fixedOvertime?.amount ?? 0}
+                      onChange={(_, vN): void =>
+                        updateNestedState('overtime.fixedOvertime.amount', isNaN(vN) ? 0 : vN)
+                      }
+                      min={0}
+                    >
+                      <NumberInputField onKeyDown={handleKeyDown} bg="white" />
+                    </NumberInput>
+                  </FormControl>
+                  <FormControl>
+                    <FormLabel fontSize="sm">みなし時間 (h)</FormLabel>
+                    <NumberInput
+                      size="sm"
+                      value={editableScenario.overtime?.fixedOvertime?.hours ?? 0}
+                      onChange={(_, vN): void =>
+                        updateNestedState('overtime.fixedOvertime.hours', isNaN(vN) ? 0 : vN)
+                      }
+                      min={0}
+                    >
+                      <NumberInputField onKeyDown={handleKeyDown} bg="white" />
+                    </NumberInput>
+                  </FormControl>
+                </HStack>
+              )}
+            </VStack>
+            <VStack spacing={3} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
+              <Heading size="sm">扶養・控除</Heading>
+              <HStack justifyContent="space-between">
+                <FormLabel htmlFor={`has-spouse-${scenario.id}`} mb="0" fontSize="sm">
+                  配偶者の有無
+                </FormLabel>
+                <Switch
+                  id={`has-spouse-${scenario.id}`}
+                  size="sm"
+                  isChecked={editableScenario.deductions?.dependents?.hasSpouse ?? false}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
+                    updateNestedState('deductions.dependents.hasSpouse', e.target.checked)
+                  }
+                />
+              </HStack>
+              <FormControl>
+                <FormLabel fontSize="sm">扶養家族の人数</FormLabel>
+                <NumberInput
+                  size="sm"
+                  value={editableScenario.deductions?.dependents?.numberOfDependents ?? 0}
+                  onChange={(_, vN): void =>
+                    updateNestedState(
+                      'deductions.dependents.numberOfDependents',
+                      isNaN(vN) ? 0 : vN
+                    )
+                  }
+                  min={0}
+                >
+                  <NumberInputField onKeyDown={handleKeyDown} bg="white" />
+                </NumberInput>
+              </FormControl>
+            </VStack>
+          </VStack>
+          <VStack spacing={3} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
+            <HStack justifyContent="space-between" mb={2}>
+              <Heading size="sm">各種手当</Heading>
+              <Button leftIcon={<FaPlus />} size="xs" onClick={addAllowance}>
+                追加
+              </Button>
+            </HStack>
+            <Box
+              maxHeight="300px"
+              overflowY="auto"
+              width="100%"
+              css={{ 'scrollbar-gutter': 'stable' }}
+            >
+              <VStack spacing={2} align="stretch" pr={2}>
+                {(editableScenario.allowances ?? []).map((allowance, index) => (
+                  <VStack
+                    key={allowance.id}
+                    p={3}
+                    border="1px solid"
+                    borderColor="gray.100"
+                    borderRadius="md"
+                    align="stretch"
+                    bg="gray.50"
+                  >
+                    <FormControl>
+                      <FormLabel fontSize="xs" mb={1}>
+                        手当名
+                      </FormLabel>
+                      <Input
+                        size="sm"
+                        placeholder="例: 住宅手当"
+                        value={allowance.name}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
+                          updateNestedState(`allowances.${index}.name`, e.target.value)
+                        }
+                        onKeyDown={handleKeyDown}
+                        bg="white"
+                      />
+                    </FormControl>
+                    <HStack flexWrap="wrap" spacing={2} alignItems="flex-end">
+                      <FormControl flex="1" minW="100px">
+                        <FormLabel fontSize="xs" mb={1}>
+                          金額
+                        </FormLabel>
+                        <NumberInput
+                          size="sm"
+                          value={allowance.amount}
+                          onChange={(_, vN): void =>
+                            updateNestedState(`allowances.${index}.amount`, isNaN(vN) ? 0 : vN)
+                          }
+                          min={0}
+                        >
+                          <NumberInputField onKeyDown={handleKeyDown} bg="white" />
+                        </NumberInput>
+                      </FormControl>
+                      <FormControl w="auto" flexShrink={0}>
+                        <FormLabel fontSize="xs" mb={1}>
+                          期間
+                        </FormLabel>
+                        <HStack spacing={1}>
+                          {allowance.duration.type !== 'unlimited' && (
+                            <NumberInput
+                              size="sm"
+                              w="auto"
+                              value={allowance.duration.value}
+                              onChange={(_, vN): void =>
+                                updateNestedState(
+                                  `allowances.${index}.duration.value`,
+                                  isNaN(vN) ? 0 : vN
+                                )
+                              }
+                              min={0}
+                            >
+                              <NumberInputField onKeyDown={handleKeyDown} bg="white" />
+                            </NumberInput>
+                          )}
+                          <Select
+                            size="sm"
+                            w={'auto'}
+                            value={allowance.duration.type}
+                            onChange={(e: React.ChangeEvent<HTMLSelectElement>): void =>
+                              updateNestedState(`allowances.${index}.duration`, {
+                                type: e.target.value,
+                                value: 0
+                              })
+                            }
+                            bg="white"
+                          >
+                            <option value="unlimited">無期限</option>
+                            <option value="years">年</option>
+                            <option value="months">ヶ月</option>
+                          </Select>
+                        </HStack>
+                      </FormControl>
+                      <IconButton
+                        alignSelf="flex-end"
+                        size="sm"
+                        aria-label="Delete allowance"
+                        icon={<FaTrash />}
+                        variant="ghost"
+                        colorScheme="red"
+                        onClick={(): void => removeAllowance(index)}
+                      />
+                    </HStack>
+                  </VStack>
+                ))}
+              </VStack>
+            </Box>
+          </VStack>
+        </SimpleGrid>
+      </VStack>
+    </Box>
+  )
 
-  const handlePrevScreen = (): void => {
-    if (currentScreen > 0) {
-      setCurrentScreen(currentScreen - 1)
-    }
-  }
-  // 🔼
+  const ResultView = (): React.JSX.Element => (
+    <Box h="100%" w="100%" overflowY="auto" p={{ base: 3, md: 6 }}>
+      {predictionResult ? (
+        <CalculationResult
+          result={predictionResult}
+          predictionPeriod={graphViewSettings.predictionPeriod}
+        />
+      ) : (
+        <Flex align="center" justify="center" h="100%">
+          <Text color="gray.500">計算結果はありません。</Text>
+        </Flex>
+      )}
+    </Box>
+  )
 
   return (
-    <Box
-      key={scenario.id}
-      h="85%"
+    <Flex
+      h="100%"
+      w="100%"
       bg="brand.base"
       borderRadius="lg"
-      boxShadow="md"
-      display="flex"
-      mt={4}
-      mx={20}
+      boxShadow="lg"
       flexDirection="column"
       onBlur={(e: React.FocusEvent<HTMLDivElement>): void => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {
@@ -155,22 +549,16 @@ function DataViewCard({ scenario, predictionResult }: DataViewCardProps): React.
         }
       }}
     >
-      <Box
-        p={4}
-        bg={'brand.darkBase'}
-        roundedTop={'lg'}
-        borderColor="gray.200"
-        justifyContent="space-between"
-        flexShrink={0}
-      >
+      <Box p={4} borderBottom="1px solid" borderColor="gray.300" flexShrink={0} bg="brand.darkBase">
         <Input
           variant="flushed"
           fontWeight="bold"
           fontSize="2xl"
           placeholder="シナリオ名"
-          w="50%"
-          borderBottomWidth="2px"
-          borderBottomColor="gray.300"
+          w={{ base: '100%', md: '75%', lg: '50%' }}
+          borderBottomColor="gray.400"
+          _hover={{ borderColor: 'gray.600' }}
+          _focus={{ borderColor: 'brand.accent' }}
           value={editableScenario.title}
           onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
             updateNestedState('title', e.target.value)
@@ -179,382 +567,27 @@ function DataViewCard({ scenario, predictionResult }: DataViewCardProps): React.
         />
       </Box>
 
-      {/* 🔽 変更点：画面切り替え用のスクロールコンテナ（framer-motionでy座標を制御） */}
-      <Box
-        ref={scrollContainerRef}
-        flex="1" // 残りの高さを全て占める
-        p={4}
-        overflowY="hidden" // ユーザーによるスクロールを無効化
-        // scrollSnapType は不要
-        // css は残しておく（scrollbar-gutterのため）
-        css={{
-          'scrollbar-gutter': 'stable'
-        }}
-      >
-        <motion.div
-          animate={{ y: `-${currentScreen * 100}%` }} // currentScreen に応じてY軸を移動
-          transition={{ ease: 'easeInOut', duration: 0.3 }} // アニメーションの速度とイージング
-          style={{ height: '100%' }} // 親のBoxの高さを継承
-        >
-          {/* 画面1: データ入力フォーム群 */}
-          <Box height="100%" flexShrink={0} pb={4} pr={4}> {/* 🔽 padding-bottom と padding-right を追加してスクロールバー分のスペースを確保 */}
-            <VStack spacing={4} align="stretch" h="100%"> {/* 🔽 height="100%" を追加 */}
-              {/* 給与・賞与セクション */}
-              <Box bg="white" p={4} borderRadius="md" boxShadow="sm">
-                <Heading size="sm" mb={4}>
-                  給与・賞与
-                </Heading>
-                <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
-                  <FormControl>
-                    <FormLabel fontSize="sm">基本給 (月額)</FormLabel>
-                    <NumberInput
-                      size="sm"
-                      value={editableScenario.initialBasicSalary ?? 0}
-                      onChange={(_, vN): void =>
-                        updateNestedState('initialBasicSalary', isNaN(vN) ? 0 : vN)
-                      }
-                      min={0}
-                    >
-                      <NumberInputField onKeyDown={handleKeyDown} placeholder="例: 300000" bg="white" />
-                    </NumberInput>
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel fontSize="sm">年間ボーナス (総額)</FormLabel>
-                    <NumberInput
-                      size="sm"
-                      value={editableScenario.annualBonus ?? 0}
-                      onChange={(_, vN): void => updateNestedState('annualBonus', isNaN(vN) ? 0 : vN)}
-                      min={0}
-                    >
-                      <NumberInputField onKeyDown={handleKeyDown} placeholder="例: 600000" bg="white" />
-                    </NumberInput>
-                  </FormControl>
-                  <FormControl>
-                    <FormLabel fontSize="sm">給与成長率 (年率 %)</FormLabel>
-                    <NumberInput
-                      size="sm"
-                      value={editableScenario.salaryGrowthRate ?? 0}
-                      onChange={(_, vN): void =>
-                        updateNestedState('salaryGrowthRate', isNaN(vN) ? 0 : vN)
-                      }
-                      min={0}
-                      precision={1}
-                      step={0.1}
-                    >
-                      <NumberInputField onKeyDown={handleKeyDown} placeholder="例: 2.5" bg="white" />
-                    </NumberInput>
-                  </FormControl>
-                </SimpleGrid>
-              </Box>
-
-              {/* 新しいレイアウト：試用期間、固定残業代、扶養・控除 (左) と 各種手当 (右) */}
-              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} width="100%">
-                {/* 左カラム: 試用期間、固定残業代、扶養・控除 */}
-                <VStack spacing={4} align="stretch">
-                  {/* 試用期間セクション */}
-                  <VStack spacing={3} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
-                    <FormControl display="flex" alignItems="center" justifyContent="space-between">
-                      <FormLabel htmlFor={`probation-enabled-${scenario.id}`} mb="0" fontWeight="bold">
-                        試用期間
-                      </FormLabel>
-                      <Switch
-                        id={`probation-enabled-${scenario.id}`}
-                        isChecked={editableScenario.probation?.enabled ?? false}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
-                          updateNestedState('probation.enabled', e.target.checked)
-                        }
-                      />
-                    </FormControl>
-                    {editableScenario.probation?.enabled && (
-                      <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3} pt={2}>
-                        <FormControl alignItems="flex-start">
-                          <FormLabel fontSize="sm" mb={1}>
-                            期間 (ヶ月)
-                          </FormLabel>
-                          <NumberInput
-                            size="sm"
-                            value={editableScenario.probation?.durationMonths ?? 0}
-                            onChange={(_, vN): void =>
-                              updateNestedState('probation.durationMonths', isNaN(vN) ? 0 : vN)
-                            }
-                            min={0}
-                          >
-                            <NumberInputField onKeyDown={handleKeyDown} bg="white" />
-                          </NumberInput>
-                        </FormControl>
-                        <FormControl alignItems="flex-start">
-                          <FormLabel fontSize="sm" mb={1}>
-                            基本給 (月額)
-                          </FormLabel>
-                          <NumberInput
-                            size="sm"
-                            value={editableScenario.probation?.basicSalary ?? 0}
-                            onChange={(_, vN): void =>
-                              updateNestedState('probation.basicSalary', isNaN(vN) ? 0 : vN)
-                            }
-                            min={0}
-                          >
-                            <NumberInputField onKeyDown={handleKeyDown} bg="white" />
-                          </NumberInput>
-                        </FormControl>
-                        <FormControl alignItems="flex-start">
-                          <FormLabel fontSize="sm" mb={1}>
-                            固定残業代 (月額)
-                          </FormLabel>
-                          <NumberInput
-                            size="sm"
-                            value={editableScenario.probation?.fixedOvertime ?? 0}
-                            onChange={(_, vN): void =>
-                              updateNestedState('probation.fixedOvertime', isNaN(vN) ? 0 : vN)
-                            }
-                            min={0}
-                          >
-                            <NumberInputField onKeyDown={handleKeyDown} bg="white" />
-                          </NumberInput>
-                        </FormControl>
-                      </SimpleGrid>
-                    )}
-                  </VStack>
-
-                  {/* 固定残業代セクション */}
-                  <VStack spacing={3} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
-                    <Heading size="sm">固定残業代</Heading>
-                    <FormControl display="flex" alignItems="center" justifyContent="space-between">
-                      <FormLabel htmlFor={`fixed-overtime-${scenario.id}`} mb="0" fontSize="sm">
-                        固定残業代制度
-                      </FormLabel>
-                      <Switch
-                        id={`fixed-overtime-${scenario.id}`}
-                        size="sm"
-                        isChecked={editableScenario.overtime?.fixedOvertime?.enabled ?? false}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
-                          updateNestedState('overtime.fixedOvertime.enabled', e.target.checked)
-                        }
-                      />
-                    </FormControl>
-                    {editableScenario.overtime?.fixedOvertime?.enabled && (
-                      <HStack>
-                        <FormControl>
-                          <FormLabel fontSize="sm">金額 (月額)</FormLabel>
-                          <NumberInput
-                            size="sm"
-                            value={editableScenario.overtime?.fixedOvertime?.amount ?? 0}
-                            onChange={(_, vN): void =>
-                              updateNestedState('overtime.fixedOvertime.amount', isNaN(vN) ? 0 : vN)
-                            }
-                            min={0}
-                          >
-                            <NumberInputField onKeyDown={handleKeyDown} bg="white" />
-                          </NumberInput>
-                        </FormControl>
-                        <FormControl>
-                          <FormLabel fontSize="sm">みなし時間 (h)</FormLabel>
-                          <NumberInput
-                            size="sm"
-                            value={editableScenario.overtime?.fixedOvertime?.hours ?? 0}
-                            onChange={(_, vN): void =>
-                              updateNestedState('overtime.fixedOvertime.hours', isNaN(vN) ? 0 : vN)
-                            }
-                            min={0}
-                          >
-                            <NumberInputField onKeyDown={handleKeyDown} bg="white" />
-                          </NumberInput>
-                        </FormControl>
-                      </HStack>
-                    )}
-                  </VStack>
-
-                  {/* 扶養・控除セクション */}
-                  <VStack spacing={3} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
-                    <Heading size="sm">扶養・控除</Heading>
-                    <HStack justifyContent="space-between">
-                      <FormLabel htmlFor={`has-spouse-${scenario.id}`} mb="0" fontSize="sm">
-                        配偶者の有無
-                      </FormLabel>
-                      <Switch
-                        id={`has-spouse-${scenario.id}`}
-                        size="sm"
-                        isChecked={editableScenario.deductions?.dependents?.hasSpouse ?? false}
-                        onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
-                          updateNestedState('deductions.dependents.hasSpouse', e.target.checked)
-                        }
-                      />
-                    </HStack>
-                    <FormControl>
-                      <FormLabel fontSize="sm">扶養家族の人数</FormLabel>
-                      <NumberInput
-                        size="sm"
-                        value={editableScenario.deductions?.dependents?.numberOfDependents ?? 0}
-                        onChange={(_, vN): void =>
-                          updateNestedState('deductions.dependents.numberOfDependents', isNaN(vN) ? 0 : vN)
-                        }
-                        min={0}
-                      >
-                        <NumberInputField onKeyDown={handleKeyDown} bg="white" />
-                      </NumberInput>
-                    </FormControl>
-                  </VStack>
-                </VStack>
-
-                {/* 右カラム: 各種手当 */}
-                <VStack spacing={3} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
-                  <HStack justifyContent="space-between" mb={2}>
-                    <Heading size="sm">各種手当</Heading>
-                    <Button leftIcon={<FaPlus />} size="xs" onClick={addAllowance}>
-                      追加
-                    </Button>
-                  </HStack>
-                  <Box
-                    maxHeight="250px"
-                    overflowY="auto"
-                    width="100%"
-                    css={{
-                      'scrollbar-gutter': 'stable'
-                    }}
-                  >
-                    <VStack spacing={2} align="stretch">
-                      {(editableScenario.allowances ?? []).map((allowance, index) => (
-                        <VStack
-                          key={allowance.id}
-                          p={2}
-                          border="1px solid"
-                          borderColor="gray.100"
-                          borderRadius="md"
-                          align="stretch"
-                          bg="gray.50"
-                        >
-                          <FormControl>
-                            <FormLabel fontSize="sm" mb={1}>
-                              手当名
-                            </FormLabel>
-                            <Input
-                              size="sm"
-                              placeholder="例: 住宅手当"
-                              value={allowance.name}
-                              onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
-                                updateNestedState(`allowances.${index}.name`, e.target.value)
-                              }
-                              onKeyDown={handleKeyDown}
-                              bg="white"
-                            />
-                          </FormControl>
-                          <HStack flexWrap="wrap" spacing={2} alignItems="flex-start">
-                            <FormControl flex="1" minW="100px">
-                              <FormLabel fontSize="sm" mb={1}>
-                                金額
-                              </FormLabel>
-                              <NumberInput
-                                size="sm"
-                                value={allowance.amount}
-                                onChange={(_, vN): void =>
-                                  updateNestedState(`allowances.${index}.amount`, isNaN(vN) ? 0 : vN)
-                                }
-                                min={0}
-                              >
-                                <NumberInputField onKeyDown={handleKeyDown} bg="white" />
-                              </NumberInput>
-                            </FormControl>
-
-                            <FormControl w="auto" flexShrink={0}>
-                              <FormLabel fontSize="sm" mb={1}>
-                                期間
-                              </FormLabel>
-                              <HStack spacing={1}>
-                                <Select
-                                  size="sm"
-                                  w="auto"
-                                  minW="60px"
-                                  value={allowance.duration.type}
-                                  onChange={(e: React.ChangeEvent<HTMLSelectElement>): void =>
-                                    updateNestedState(`allowances.${index}.duration`, {
-                                      type: e.target.value,
-                                      value: 0
-                                    })
-                                  }
-                                  bg="white"
-                                  flexShrink={0}
-                                >
-                                  <option value="unlimited">無期限</option>
-                                  <option value="years">年</option>
-                                  <option value="months">ヶ月</option>
-                                </Select>
-                                {allowance.duration.type === 'years' && (
-                                  <NumberInput
-                                    size="sm"
-                                    w="auto"
-                                    minW="50px"
-                                    maxW="70px"
-                                    value={allowance.duration.value}
-                                    onChange={(_, vN): void =>
-                                      updateNestedState(`allowances.${index}.duration.value`, isNaN(vN) ? 0 : vN)
-                                    }
-                                    min={0}
-                                  >
-                                    <NumberInputField onKeyDown={handleKeyDown} bg="white" />
-                                  </NumberInput>
-                                )}
-                                {allowance.duration.type === 'months' && (
-                                  <NumberInput
-                                    size="sm"
-                                    w="auto"
-                                    minW="50px"
-                                    maxW="70px"
-                                    value={allowance.duration.value}
-                                    onChange={(_, vN): void =>
-                                      updateNestedState(`allowances.${index}.duration.value`, isNaN(vN) ? 0 : vN)
-                                    }
-                                    min={0}
-                                  >
-                                    <NumberInputField onKeyDown={handleKeyDown} bg="white" />
-                                  </NumberInput>
-                                )}
-                              </HStack>
-                            </FormControl>
-
-                            <IconButton
-                              size="sm"
-                              aria-label="Delete allowance"
-                              icon={<FaTrash />}
-                              variant="ghost"
-                              colorScheme="red"
-                              onClick={(): void => removeAllowance(index)}
-                              flexShrink={0}
-                            />
-                          </HStack>
-                        </VStack>
-                      ))}
-                    </VStack>
-                  </Box>
-                </VStack>
-              </SimpleGrid>
-            </VStack>
-          </Box>
-
-          {/* 画面2: 計算結果 */}
-          {predictionResult && (
-            <Box height="100%" flexShrink={0} mt={4}> {/* 🔽 mt={4} を追加して画面間の間隔を確保 */}
-              <CalculationResult
-                result={predictionResult}
-                predictionPeriod={graphViewSettings.predictionPeriod}
-              />
-            </Box>
-          )}
-        </motion.div>
+      <Box flex="1" minH={0} position="relative" overflow="hidden" onWheel={handleWheel}>
+        <AnimatePresence initial={false} custom={slideDirection}>
+          <motion.div
+            key={currentView}
+            custom={slideDirection}
+            variants={slideVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            style={{
+              height: '100%',
+              position: 'absolute',
+              width: '100%',
+              willChange: 'transform, opacity'
+            }}
+          >
+            {currentView === 'input' ? <InputView /> : <ResultView />}
+          </motion.div>
+        </AnimatePresence>
       </Box>
-      {/* 🔼 画面切り替え用のスクロールコンテナここまで */}
-
-      {/* 🔽 追加：画面切り替え用のナビゲーションボタン */}
-      <HStack justifyContent="center" py={2} borderTop="1px solid" borderColor="gray.200" flexShrink={0}>
-        <Button onClick={handlePrevScreen} isDisabled={currentScreen === 0} size="sm">
-          戻る
-        </Button>
-        <Text>{currentScreen === 0 ? '入力' : '結果'}</Text>
-        <Button onClick={handleNextScreen} isDisabled={currentScreen === 1} size="sm">
-          次へ
-        </Button>
-      </HStack>
-      {/* 🔼 */}
-    </Box>
+    </Flex>
   )
 }
 
@@ -585,10 +618,12 @@ function ControlSection(): React.JSX.Element {
   return (
     <HStack
       p={4}
+      w={'100%'}
       borderBottom="1px solid"
       borderColor="gray.200"
       bg="white"
-      spacing={8}
+      spacing={{ base: 4, md: 8 }}
+      flexShrink={0}
       opacity={isPending ? 0.7 : 1}
       pointerEvents={isPending ? 'none' : 'auto'}
     >
@@ -632,6 +667,46 @@ function ControlSection(): React.JSX.Element {
   )
 }
 
+// --- ▲▲▲ シナリオ未選択時のウェルカムスクリーン ▲▲▲ ---
+const WelcomeScreen = (): React.JSX.Element => {
+  const createScenario = useSetAtom(createScenarioAtom)
+  return (
+    <Center w={'100%'} h="100%" p={8} bg="gray.50">
+      <VStack spacing={6} textAlign="center">
+        <Icon as={FiTrendingUp} boxSize={{ base: 16, md: 20 }} color="brand.accent" />
+        <Heading as="h2" size="xl" color="brand.main">
+          未来を見通すキャリアの瞳
+        </Heading>
+        <Text color="brand.darkGray">
+          「
+          <Text as="span" fontWeight={'bold'} color="brand.accent">
+            Miraishi
+          </Text>
+          」へようこそ！
+          <br />
+          シナリオを作成して、あなたの収入が将来どのように変化するか予測してみましょう。
+        </Text>
+        <Button
+          bg="brand.accent"
+          color="white"
+          _hover={{
+            bg: 'teal.500',
+            transform: 'scale(1.1)'
+          }}
+          leftIcon={<FaPlus />}
+          onClick={createScenario}
+          size="lg"
+          mt={4}
+          boxShadow="md"
+          transition="all 0.15s ease-in-out"
+        >
+          シナリオを作成する
+        </Button>
+      </VStack>
+    </Center>
+  )
+}
+
 // -----------------------------------------------------------------------------
 // DataView: 親コンポーネント
 // -----------------------------------------------------------------------------
@@ -639,7 +714,6 @@ export function DataView(): React.JSX.Element {
   const [activeScenarios] = useAtom(activeScenariosAtom)
   const [predictionResults] = useAtom(predictionResultsAtom)
   const calculatePredictions = useSetAtom(calculatePredictionsAtom)
-  // const setIsGraphViewVisible = useSetAtom(isGraphViewVisibleAtom) // App.tsx に移動
   const settings = useAtomValue(graphViewSettingsAtom)
   const [isCalculating, setIsCalculating] = useState<boolean>(false)
   const [currentIndex, setCurrentIndex] = useState<number>(0)
@@ -669,16 +743,7 @@ export function DataView(): React.JSX.Element {
   }
 
   if (activeScenarios.length === 0) {
-    return (
-      <Box flex="1" p={8} display="flex" alignItems="center" justifyContent="center">
-        <VStack>
-          <Heading size="lg" color="brand.darkGray">
-            シナリオを選択してください
-          </Heading>
-          <Text mt={2}>左のパネルからシナリオを選択するか、新規作成してください。</Text>
-        </VStack>
-      </Box>
-    )
+    return <WelcomeScreen />
   }
 
   const currentScenario = activeScenarios[currentIndex]
@@ -686,20 +751,9 @@ export function DataView(): React.JSX.Element {
     predictionResults.find((r) => r.scenarioId === currentScenario?.id)?.result || null
 
   return (
-    <Box flex="1" h="100%" display="flex" flexDirection="column" bg="gray.50">
-      {' '}
-      {/* h="100vh" を h="100%" に修正 */}
-      {/* 以前のヘッダー部分はApp.tsxに移動しました */}
+    <VStack w="100%" h="100%" bg="gray.50" spacing={0}>
       <ControlSection />
-      <Flex
-        flex="1"
-        w="100%"
-        h="100%"
-        overflow="hidden"
-        position="relative"
-        alignItems="center"
-        justifyContent="center"
-      >
+      <Box flex="1" w="100%" minH={0} position="relative" p={{ base: 2, md: 4, lg: 6 }}>
         <AnimatePresence>
           {isCalculating && (
             <motion.div
@@ -728,7 +782,7 @@ export function DataView(): React.JSX.Element {
           <>
             <IconButton
               position="absolute"
-              left={4}
+              left={{ base: 1, md: 2 }}
               top="50%"
               transform="translateY(-50%)"
               zIndex={2}
@@ -736,15 +790,14 @@ export function DataView(): React.JSX.Element {
               icon={<FaChevronLeft />}
               onClick={goToPrev}
               isRound
-              size="md"
+              size="sm"
               bg="white"
               boxShadow="lg"
-              _hover={{ bg: 'gray.50' }}
+              _hover={{ bg: 'gray.100' }}
             />
-
             <IconButton
               position="absolute"
-              right={4}
+              right={{ base: 1, md: 2 }}
               top="50%"
               transform="translateY(-50%)"
               zIndex={2}
@@ -752,36 +805,38 @@ export function DataView(): React.JSX.Element {
               icon={<FaChevronRight />}
               onClick={goToNext}
               isRound
-              size="md"
+              size="sm"
               bg="white"
               boxShadow="lg"
-              _hover={{ bg: 'gray.50' }}
+              _hover={{ bg: 'gray.100' }}
             />
           </>
         )}
 
-        <AnimatePresence initial={false} mode="wait">
-          <motion.div
-            key={currentScenario?.id || currentIndex}
-            initial={{ x: 300, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: -300, opacity: 0 }}
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
-            style={{ width: '100%', height: '100%' }}
-          >
-            {currentScenario && (
-              <DataViewCard scenario={currentScenario} predictionResult={currentResult} />
-            )}
-          </motion.div>
-        </AnimatePresence>
+        <Box w="100%" h="100%" position="relative">
+          <AnimatePresence initial={false} mode="wait">
+            <motion.div
+              key={currentScenario?.id || currentIndex}
+              initial={{ x: 300, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -300, opacity: 0 }}
+              transition={{ duration: 0.2, ease: 'easeInOut' }}
+              style={{ width: '100%', height: '100%', position: 'absolute' }}
+            >
+              {currentScenario && (
+                <DataViewCard scenario={currentScenario} predictionResult={currentResult} />
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </Box>
 
         {activeScenarios.length > 1 && (
-          <HStack position="absolute" top={4} zIndex={1}>
+          <HStack position="absolute" bottom={{ base: 1, md: 2 }} zIndex={1}>
             {activeScenarios.map((_, index) => (
               <Box
                 key={index}
-                w={3}
-                h={3}
+                w={2}
+                h={2}
                 bg={index === currentIndex ? 'brand.accent' : 'gray.300'}
                 borderRadius="full"
                 transition="background-color 0.2s"
@@ -789,7 +844,7 @@ export function DataView(): React.JSX.Element {
             ))}
           </HStack>
         )}
-      </Flex>
-    </Box>
+      </Box>
+    </VStack>
   )
 }

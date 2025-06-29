@@ -22,19 +22,11 @@ import {
   Input,
   Flex
 } from '@chakra-ui/react'
-import {
-  FaTrash,
-  FaPlus,
-  FaAngleLeft,
-  FaAngleRight,
-  FaSearch,
-  FaTimes
-} from 'react-icons/fa'
+import { FaTrash, FaPlus, FaAngleLeft, FaAngleRight, FaSearch, FaTimes } from 'react-icons/fa'
 import { useAtom, useSetAtom } from 'jotai'
 import { motion, AnimatePresence } from 'framer-motion'
 
 import {
-  scenariosAtom, // scenariosAtom も引き続きインポート（filteredScenariosAtom の元データとして必要）
   createScenarioAtom,
   deleteScenarioAtom,
   isControlPanelOpenAtom,
@@ -196,7 +188,7 @@ export function ControlPanel(): React.JSX.Element {
         onMouseLeave={handleMouseLeave}
       >
         <VStack align="stretch" spacing={4} h="100%">
-          <HStack h={"42px"} justifyContent="flex-start" alignItems="center">
+          <HStack h={'42px'} justifyContent="flex-start" alignItems="center">
             {/* パネルトグルボタン */}
             <Tooltip label={!isOpen ? '開く' : '閉じる'} placement="right">
               <IconButton
@@ -353,7 +345,8 @@ export function ControlPanel(): React.JSX.Element {
                 })
               ) : (
                 <Text fontSize="sm" color="brand.darkGray" textAlign="center" mt={4}>
-                  {searchQuery ? '該当するシナリオはありません' : 'シナリオはありません'} {/* 検索中のメッセージを追加 */}
+                  {searchQuery ? '該当するシナリオはありません' : 'シナリオはありません'}{' '}
+                  {/* 検索中のメッセージを追加 */}
                 </Text>
               )}
               {/* 🔼 */}

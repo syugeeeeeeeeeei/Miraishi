@@ -158,7 +158,5 @@ export const filteredScenariosAtom = atom<Scenario[]>((get) => {
   }
 
   // シナリオのタイトルが検索クエリを部分一致で含むものをフィルタリング
-  return allScenarios.filter(scenario =>
-    scenario.title.toLowerCase().includes(query)
-  )
+  return allScenarios.filter((scenario) => scenario.title.toLowerCase().includes(query))
 })

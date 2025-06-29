@@ -1,8 +1,8 @@
 /**
  * @file src/renderer/src/components/CalculationResult.tsx
- * @description 計算結果をテーブルで表示するコンポーネント（react-window + Modal対応版）
+ * @description 計算結果をChakra UIのTableで表示するコンポーネント
  */
-import React, { memo } from 'react'
+import React from 'react'
 import {
   Box,
   Heading,
@@ -17,9 +17,16 @@ import {
   ModalContent,
   ModalHeader,
   ModalBody,
-  ModalCloseButton
+  ModalCloseButton,
+  Table,
+  Thead,
+  Tbody,
+  Tr,
+  Th,
+  Td,
+  TableContainer,
+  TableCaption
 } from '@chakra-ui/react'
-import { FixedSizeList } from 'react-window'
 import type { PredictionResult } from '@myTypes/miraishi'
 
 interface Props {
@@ -32,11 +39,11 @@ const formatYen = (value: number): string => {
 }
 
 const BreakdownPanel: React.FC<{ breakdown: PredictionResult['details'][0]['breakdown'] }> = ({
-  breakdown
-}) => (
+                                                                                                breakdown
+                                                                                              }) => (
   <Box p={4} bg={'gray.50'}>
     <SimpleGrid
-      columns={2}
+      columns={{ base: 1, md: 2 }}
       spacing={4}
       bg="white"
       p={4}
@@ -118,45 +125,25 @@ const BreakdownPanel: React.FC<{ breakdown: PredictionResult['details'][0]['brea
   </Box>
 )
 
-// 1. 名前付き関数としてコンポーネントを定義
-const RowComponent = ({
-  data,
-  index,
-  style
-}: {
-  data: PredictionResult['details']
-  index: number
-  style: React.CSSProperties
-}): React.JSX.Element => {
+const ResultRow = ({ detail }: { detail: PredictionResult['details'][0] }): React.JSX.Element => {
   const { isOpen, onOpen, onClose } = useDisclosure()
-  const detail = data[index]
 
   return (
-    <Box style={style}>
-      <HStack
-        w="100%"
-        px={4}
-        py={3}
-        borderBottomWidth="1px"
-        borderColor="gray.200"
-        cursor="pointer"
-        _hover={{ bg: 'gray.100' }}
-        onClick={onOpen}
-        transition="background-color 0.2s"
-      >
-        <Box flex="1">
-          <Text>{detail.year}年目</Text>
-        </Box>
-        <Box flex="2" textAlign="right">
-          <Text>{formatYen(detail.grossAnnualIncome)}</Text>
-        </Box>
-        <Box flex="2" textAlign="right">
-          <Text fontWeight="bold">{formatYen(detail.netAnnualIncome)}</Text>
-        </Box>
-        <Box flex="2" textAlign="right">
-          <Text color="gray.600">{formatYen(detail.netAnnualIncome / 12)}</Text>
-        </Box>
-      </HStack>
+    <>
+      <Tr cursor="pointer" _hover={{ bg: 'gray.100' }} onClick={onOpen}>
+        <Td fontSize={{ base: 'sm', md: 'md' }} py={{ base: 2, md: 3 }}>
+          {detail.year}年目
+        </Td>
+        <Td isNumeric fontSize={{ base: 'sm', md: 'md' }} py={{ base: 2, md: 3 }}>
+          {formatYen(detail.grossAnnualIncome)}
+        </Td>
+        <Td isNumeric fontWeight="bold" fontSize={{ base: 'sm', md: 'md' }} py={{ base: 2, md: 3 }}>
+          {formatYen(detail.netAnnualIncome)}
+        </Td>
+        <Td isNumeric color="gray.600" fontSize={{ base: 'sm', md: 'md' }} py={{ base: 2, md: 3 }}>
+          {formatYen(detail.netAnnualIncome / 12)}
+        </Td>
+      </Tr>
 
       <Modal isOpen={isOpen} onClose={onClose} isCentered size="xl">
         <ModalOverlay />
@@ -168,51 +155,38 @@ const RowComponent = ({
           </ModalBody>
         </ModalContent>
       </Modal>
-    </Box>
+    </>
   )
 }
-// 2. 名前付き関数にdisplayNameを設定
-RowComponent.displayName = 'RowComponent'
-
-// 3. memoでラップする
-const Row = memo(RowComponent)
 
 export function CalculationResult({ result, predictionPeriod }: Props): React.JSX.Element {
   return (
-    <VStack spacing={2} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
+    <VStack spacing={4} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
       <Heading size="md" px={2}>
         計算結果{' '}
-        <Tag colorScheme="blue" size="md" ml={2}>
+        <Tag colorScheme="blue" size="md" ml={2} verticalAlign="middle">
           {predictionPeriod}年間
         </Tag>
       </Heading>
 
-      <HStack w="100%" px={4} py={2} borderBottomWidth="2px" borderColor="gray.300">
-        <Box flex="1">
-          <Text fontWeight="bold">年度</Text>
-        </Box>
-        <Box flex="2" textAlign="right">
-          <Text fontWeight="bold">年収(額面)</Text>
-        </Box>
-        <Box flex="2" textAlign="right">
-          <Text fontWeight="bold">手取り年収</Text>
-        </Box>
-        <Box flex="2" textAlign="right">
-          <Text fontWeight="bold">平均月収(手取り)</Text>
-        </Box>
-      </HStack>
-
-      <Box h="400px" w="100%">
-        <FixedSizeList
-          height={400}
-          itemCount={result.details.length}
-          itemSize={57} // 行の高さを固定 (py(3*4=12)*2 + text-size)
-          width="100%"
-          itemData={result.details}
-        >
-          {Row}
-        </FixedSizeList>
-      </Box>
+      <TableContainer>
+        <Table variant="simple" size={{ base: 'sm', md: 'md' }}>
+          <TableCaption>各行をクリックすると、その年の詳細な内訳を確認できます。</TableCaption>
+          <Thead>
+            <Tr>
+              <Th>年度</Th>
+              <Th isNumeric>年収(額面)</Th>
+              <Th isNumeric>手取り年収</Th>
+              <Th isNumeric>平均月収(手取り)</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {result.details.map((detail) => (
+              <ResultRow key={detail.year} detail={detail} />
+            ))}
+          </Tbody>
+        </Table>
+      </TableContainer>
     </VStack>
   )
 }
