@@ -26,7 +26,8 @@ import {
   SliderFilledTrack,
   SliderThumb,
   Badge,
-  Spacer
+  Spacer,
+  Image
 } from '@chakra-ui/react'
 import { FaPlus, FaTrash, FaChartLine, FaChevronLeft, FaChevronRight } from 'react-icons/fa'
 import { useAtom, useSetAtom, useAtomValue } from 'jotai'
@@ -42,7 +43,8 @@ import {
 import type { Scenario, Allowance, PredictionResult } from '@myTypes/miraishi'
 import { v4 as uuidv4 } from 'uuid'
 import { CalculationResult } from './CalculationResult'
-import '@fontsource/m-plus-rounded-1c/700.css';
+import '@fontsource/m-plus-rounded-1c/700.css'
+import icon from '@renderer/assets/icon.png?asset'
 
 // -----------------------------------------------------------------------------
 // DataViewCard
@@ -525,7 +527,7 @@ export function DataView(): React.JSX.Element {
     } else {
       calculatePredictions()
     }
-  }, [activeScenarios.map((s) => s.id).join(','), settings])
+  }, [activeScenarios.length, calculatePredictions, settings])
 
   const goToNext = (): void => {
     setCurrentIndex((prev) => (prev + 1) % activeScenarios.length)
@@ -561,8 +563,18 @@ export function DataView(): React.JSX.Element {
         justifyContent="flex-end"
         spacing={4}
       >
-        <Heading size="lg" color="brand.accent" fontFamily={'M PLUS Rounded 1c'} fontWeight="bold">
-          Miraishi
+        <Heading
+          size="lg"
+          color="brand.accent"
+          fontFamily={'M PLUS Rounded 1c'}
+          fontWeight="bold"
+        >
+          <HStack>
+            <Image src={icon} boxSize={8}/>
+            <Text>
+              Miraishi
+            </Text>
+          </HStack>
         </Heading>
         <Spacer />
         <Button
@@ -654,7 +666,7 @@ export function DataView(): React.JSX.Element {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -300, opacity: 0 }}
             transition={{ duration: 0.2, ease: 'easeInOut' }}
-            style={{ width: '100%', height: '100%'}}
+            style={{ width: '100%', height: '100%' }}
           >
             {currentScenario && (
               <DataViewCard scenario={currentScenario} predictionResult={currentResult} />
