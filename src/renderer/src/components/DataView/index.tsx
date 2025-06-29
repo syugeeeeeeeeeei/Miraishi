@@ -57,7 +57,7 @@ export function DataView(): React.JSX.Element {
 
   return (
     <VStack w="100%" h="100%" bg="gray.50" spacing={0}>
-      <Box flex="1" w="100%" minH={0} position="relative" p={{ base: 2, md: 4, lg: 6 }}>
+      <Box flex="1" w="100%" minH={0} position="relative" py={[2,4,6]} px={"60px"}>
         <AnimatePresence>
           {isCalculating && (
             <motion.div
