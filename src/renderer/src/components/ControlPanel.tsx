@@ -32,7 +32,7 @@ import {
 } from '@renderer/store/atoms'
 
 // アニメーション用のコンポーネント
-const MotionButton = motion(Button)
+const MotionButton = motion.create(Button)
 
 export function ControlPanel(): React.JSX.Element {
   const [scenarios] = useAtom(scenariosAtom)
@@ -44,6 +44,7 @@ export function ControlPanel(): React.JSX.Element {
   const { isOpen: isAlertOpen, onOpen: onAlertOpen, onClose: onAlertClose } = useDisclosure()
   const cancelRef = useRef<HTMLButtonElement>(null)
   const [targetIdToDelete, setTargetIdToDelete] = useState<string | null>(null)
+  const [isClickOpen, setIsClickOpen] = useState<boolean>(false)
 
   const handleDeleteClick = (scenarioId: string): void => {
     setTargetIdToDelete(scenarioId)
@@ -71,26 +72,106 @@ export function ControlPanel(): React.JSX.Element {
     })
   }
 
+  const timerRef = useRef<number | null>(null)
+  const leaveTimerRef = useRef<number | null>(null)
+  const isHoveringRef = useRef<boolean>(false)
+
+  const handleMouseEnter = (): void => {
+    isHoveringRef.current = true
+
+    // Leave timerをクリア
+    if (leaveTimerRef.current !== null) {
+      clearTimeout(leaveTimerRef.current)
+      leaveTimerRef.current = null
+    }
+
+    // 既存のenter timerをクリア
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current)
+    }
+
+    // 500ms後にパネルを開く
+    timerRef.current = window.setTimeout(() => {
+      if (isHoveringRef.current) {
+        // まだホバー中の場合のみ開く
+        setIsOpen(true)
+      }
+      timerRef.current = null
+    }, 200)
+  }
+
+  const handleMouseLeave = (): void => {
+    isHoveringRef.current = false
+
+    // Enter timerをクリア
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+
+    // 200ms後にパネルを閉じる（クリックで開いていない場合）
+    leaveTimerRef.current = window.setTimeout(() => {
+      if (!isClickOpen) {
+        setIsOpen(false)
+      }
+      leaveTimerRef.current = null
+    }, 200)
+  }
+  const handleOpenClick = (): void => {
+    if (!isOpen) {
+      setIsOpen(true)
+      setIsClickOpen(true)
+    } else if (isOpen && !isClickOpen) {
+      setIsClickOpen(true)
+    } else {
+      setIsOpen(false)
+      setIsClickOpen(false)
+    }
+  }
+
+  // IconButtonのマウスイベントを処理する関数
+  const handleIconButtonMouseEnter = (e: React.MouseEvent): void => {
+    e.stopPropagation()
+    isHoveringRef.current = false // IconButton上ではホバー状態を無効にする
+
+    // Enter timerをクリア（パネルが開かないようにする）
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+  }
+
+  const handleIconButtonMouseLeave = (e: React.MouseEvent): void => {
+    e.stopPropagation()
+    // IconButtonから出た時は親要素のmouseenterが再度発火するので特に処理不要
+  }
+
   return (
     <>
       <Box
-        w={isOpen ? '300px' : '75px'} // 幅を広げる
+        w={isOpen ? '280px' : '74px'} // 幅を広げる
         h="100vh"
         bg="brand.white"
         p={4} // 余白を調整
         boxShadow="lg" // 影を少し強く
         zIndex={10}
-        transition="width 0.3s ease-in-out" // アニメーションを滑らかに
+        transition="width 0.2s ease-in-out" // アニメーションを滑らかに
         flexShrink={0}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         <VStack align="stretch" spacing={4} h="100%">
-          <HStack justifyContent="flex-end">
-            <IconButton
-              aria-label="Toggle Panel"
-              icon={isOpen ? <FaAngleLeft /> : <FaAngleRight />}
-              variant="ghost"
-              onClick={(): void => setIsOpen(!isOpen)}
-            />
+          <HStack justifyContent="flex-start">
+            <Tooltip label={!isOpen ? '開く' : '閉じる'} placement="right">
+              <IconButton
+                aria-label="Toggle Panel"
+                icon={isOpen ? <FaAngleLeft /> : <FaAngleRight />}
+                variant="ghost"
+                onClick={handleOpenClick}
+                onMouseEnter={handleIconButtonMouseEnter}
+                onMouseLeave={handleIconButtonMouseLeave}
+              />
+            </Tooltip>
           </HStack>
 
           <Tooltip label="新規シナリオ作成" isDisabled={isOpen} placement="right">

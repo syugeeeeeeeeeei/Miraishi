@@ -95,7 +95,7 @@ export const deleteScenarioAtom = atom(null, async (get, set, scenarioId: string
 
 // --- UI状態・計算関連のAtom ---
 
-export const isControlPanelOpenAtom = atom(true)
+export const isControlPanelOpenAtom = atom(false)
 export const isGraphViewVisibleAtom = atom(false)
 
 /**

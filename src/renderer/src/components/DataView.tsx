@@ -42,10 +42,10 @@ import {
 import type { Scenario, Allowance, PredictionResult } from '@myTypes/miraishi'
 import { v4 as uuidv4 } from 'uuid'
 import { CalculationResult } from './CalculationResult'
+import '@fontsource/m-plus-rounded-1c/700.css';
 
 // -----------------------------------------------------------------------------
 // DataViewCard
-// (このコンポーネントは変更ありません)
 // -----------------------------------------------------------------------------
 interface DataViewCardProps {
   scenario: Scenario
@@ -126,6 +126,8 @@ function DataViewCard({ scenario, predictionResult }: DataViewCardProps): React.
       borderRadius="lg"
       boxShadow="md"
       display="flex"
+      my={4}
+      mx={20}
       flexDirection="column"
       onBlur={(e: React.FocusEvent<HTMLDivElement>): void => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {
@@ -428,12 +430,9 @@ function DataViewCard({ scenario, predictionResult }: DataViewCardProps): React.
 function ControlSection(): React.JSX.Element {
   const [settings, setSettings] = useAtom(graphViewSettingsAtom)
   const [isPending, startTransition] = useTransition()
-
-  // 🔽 ----- ローカルStateを追加 ----- 🔽
   const [tempPeriod, setTempPeriod] = useState(settings.predictionPeriod)
   const [tempOvertime, setTempOvertime] = useState(settings.averageOvertimeHours)
 
-  // グローバルな設定が外部から変更された場合に、ローカルの表示も同期させる
   useEffect(() => {
     setTempPeriod(settings.predictionPeriod)
     setTempOvertime(settings.averageOvertimeHours)
@@ -510,8 +509,6 @@ export function DataView(): React.JSX.Element {
   const settings = useAtomValue(graphViewSettingsAtom)
   const [isCalculating, setIsCalculating] = useState<boolean>(false)
   const [currentIndex, setCurrentIndex] = useState<number>(0)
-  const [leftHovering, setLeftHovering] = useState<boolean>(false)
-  const [rightHovering, setRightHovering] = useState<boolean>(false)
 
   useEffect((): void => {
     setCurrentIndex(0)
@@ -564,7 +561,7 @@ export function DataView(): React.JSX.Element {
         justifyContent="flex-end"
         spacing={4}
       >
-        <Heading size="md" color="brand.accent" fontWeight="bold">
+        <Heading size="lg" color="brand.accent" fontFamily={'M PLUS Rounded 1c'} fontWeight="bold">
           Miraishi
         </Heading>
         <Spacer />
@@ -614,62 +611,39 @@ export function DataView(): React.JSX.Element {
           )}
         </AnimatePresence>
 
-        {!isCalculating && activeScenarios.length > 1 && (
+        {activeScenarios.length > 1 && (
           <>
-            <Box
+            <IconButton
               position="absolute"
-              left={0}
-              top={0}
-              w="15%"
-              h="100%"
+              left={4}
+              top="50%"
+              transform="translateY(-50%)"
               zIndex={2}
-              onMouseEnter={(): void => setLeftHovering(true)}
-              onMouseLeave={(): void => setLeftHovering(false)}
-            >
-              <motion.div
-                style={{ pointerEvents: leftHovering ? 'auto' : 'none' }}
-                animate={{ opacity: leftHovering ? 1 : 0 }}
-                transition={{ duration: 0.1 }}
-              >
-                <IconButton
-                  aria-label="Previous slide"
-                  icon={<FaChevronLeft />}
-                  onClick={goToPrev}
-                  position="absolute"
-                  left={4}
-                  top="50%"
-                  transform="translateY(-50%)"
-                  isRound
-                />
-              </motion.div>
-            </Box>
-            <Box
+              aria-label="Previous slide"
+              icon={<FaChevronLeft />}
+              onClick={goToPrev}
+              isRound
+              size="md"
+              bg="white"
+              boxShadow="lg"
+              _hover={{ bg: 'gray.50' }}
+            />
+
+            <IconButton
               position="absolute"
-              right={0}
-              top={0}
-              w="15%"
-              h="100%"
+              right={4}
+              top="50%"
+              transform="translateY(-50%)"
               zIndex={2}
-              onMouseEnter={(): void => setRightHovering(true)}
-              onMouseLeave={(): void => setRightHovering(false)}
-            >
-              <motion.div
-                style={{ pointerEvents: rightHovering ? 'auto' : 'none' }}
-                animate={{ opacity: rightHovering ? 1 : 0 }}
-                transition={{ duration: 0.1 }}
-              >
-                <IconButton
-                  aria-label="Next slide"
-                  icon={<FaChevronRight />}
-                  onClick={goToNext}
-                  position="absolute"
-                  right={4}
-                  top="50%"
-                  transform="translateY(-50%)"
-                  isRound
-                />
-              </motion.div>
-            </Box>
+              aria-label="Next slide"
+              icon={<FaChevronRight />}
+              onClick={goToNext}
+              isRound
+              size="md"
+              bg="white"
+              boxShadow="lg"
+              _hover={{ bg: 'gray.50' }}
+            />
           </>
         )}
 
@@ -680,7 +654,7 @@ export function DataView(): React.JSX.Element {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -300, opacity: 0 }}
             transition={{ duration: 0.2, ease: 'easeInOut' }}
-            style={{ width: '100%', height: '100%', padding: '16px' }}
+            style={{ width: '100%', height: '100%'}}
           >
             {currentScenario && (
               <DataViewCard scenario={currentScenario} predictionResult={currentResult} />

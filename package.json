@@ -29,6 +29,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@fontsource/m-plus-rounded-1c": "^5.2.8",
     "@fontsource/zen-maru-gothic": "^5.2.6",
     "chart.js": "^4.5.0",
     "date-fns": "^4.1.0",
