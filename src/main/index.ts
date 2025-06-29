@@ -154,10 +154,10 @@ app.whenReady().then((): void => {
       // このシナリオに関連する全てのキャッシュを無効化
       for (const key of initialCalculationCache.keys()) {
         if (key.startsWith(scenarioToValidate.id)) {
-          initialCalculationCache.delete(key);
+          initialCalculationCache.delete(key)
         }
       }
-      console.log(`All caches invalidated for scenario: ${scenarioToValidate.title}`);
+      console.log(`All caches invalidated for scenario: ${scenarioToValidate.title}`)
 
       scenarios[index] = scenarioToValidate
       store.set('scenarios', scenarios)
@@ -191,10 +191,9 @@ app.whenReady().then((): void => {
       _,
       { scenario, settings }: { scenario: Scenario; settings: GraphViewSettings }
     ): PredictionResult | { success: false; error: string } => {
-
-      const settingsString = JSON.stringify(settings);
-      const settingsHash = crypto.createHash('sha256').update(settingsString).digest('hex');
-      const cacheKey = `${scenario.id}-${settingsHash}`;
+      const settingsString = JSON.stringify(settings)
+      const settingsHash = crypto.createHash('sha256').update(settingsString).digest('hex')
+      const cacheKey = `${scenario.id}-${settingsHash}`
 
       if (initialCalculationCache.has(cacheKey)) {
         console.log(`Returning cached result for key: ${cacheKey}`)
@@ -207,8 +206,8 @@ app.whenReady().then((): void => {
 
         const result = calculatePrediction({ scenario, settings }, taxSchema)
 
-        initialCalculationCache.set(cacheKey, result);
-        console.log(`Result cached with key: ${cacheKey}`);
+        initialCalculationCache.set(cacheKey, result)
+        console.log(`Result cached with key: ${cacheKey}`)
 
         return result
       } catch (error) {

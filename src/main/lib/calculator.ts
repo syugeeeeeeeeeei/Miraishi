@@ -41,7 +41,7 @@ export function calculatePrediction(
     let grossAnnualIncome: number
 
     // --- 🔽 最適化: 残業代計算を効率化 🔽 ---
-    let monthlySalaryForOvertimeCalc: number;
+    let monthlySalaryForOvertimeCalc: number
     if (year === 1 && scenario.probation?.enabled) {
       const probationMonths = scenario.probation.durationMonths
       const afterProbationMonths = 12 - probationMonths
@@ -88,27 +88,30 @@ export function calculatePrediction(
 
     // --- 🔽 最適化: 手当計算を効率化 🔽 ---
     // 事前計算した固定手当をベースに、期間や割合が変動するものだけをループ内で計算
-    annualAllowances = fixedAnnualAllowances + (scenario.allowances ?? []).reduce((total, allowance) => {
-      let isAllowanceActive = false
-      if(allowance.duration.type !== 'unlimited') {
-        switch (allowance.duration.type) {
-          case 'years':
-            if (year <= allowance.duration.value) isAllowanceActive = true
-            break
-          case 'months':
-            if (year * 12 <= allowance.duration.value) isAllowanceActive = true
-            break
+    annualAllowances =
+      fixedAnnualAllowances +
+      (scenario.allowances ?? []).reduce((total, allowance) => {
+        let isAllowanceActive = false
+        if (allowance.duration.type !== 'unlimited') {
+          switch (allowance.duration.type) {
+            case 'years':
+              if (year <= allowance.duration.value) isAllowanceActive = true
+              break
+            case 'months':
+              if (year * 12 <= allowance.duration.value) isAllowanceActive = true
+              break
+          }
         }
-      }
 
-      if (isAllowanceActive && allowance.type === 'fixed') {
-        return total + allowance.amount * 12
-      }
-      if (allowance.type === 'percentage') { // 割合ベースは毎年計算が必要
-        return total + annualBasicSalary * (allowance.amount / 100)
-      }
-      return total
-    }, 0)
+        if (isAllowanceActive && allowance.type === 'fixed') {
+          return total + allowance.amount * 12
+        }
+        if (allowance.type === 'percentage') {
+          // 割合ベースは毎年計算が必要
+          return total + annualBasicSalary * (allowance.amount / 100)
+        }
+        return total
+      }, 0)
     // --- 🔼 最適化: 手当計算を効率化 🔼 ---
 
     grossAnnualIncome =

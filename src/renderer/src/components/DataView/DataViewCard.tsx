@@ -48,7 +48,8 @@ export function DataViewCard({ scenario, predictionResult }: DataViewCardProps):
       if (isScrollable) {
         const atTop = currentTarget.scrollTop === 0
         const atBottom =
-          Math.ceil(currentTarget.scrollTop + currentTarget.clientHeight) >= currentTarget.scrollHeight
+          Math.ceil(currentTarget.scrollTop + currentTarget.clientHeight) >=
+          currentTarget.scrollHeight
 
         if (e.deltaY > 0 && !atBottom) return
         if (e.deltaY < 0 && !atTop) return
@@ -64,7 +65,7 @@ export function DataViewCard({ scenario, predictionResult }: DataViewCardProps):
     }
 
     const { deltaY } = e
-    const canGoToResult = !!predictionResult && predictionResult.details.length > 0;
+    const canGoToResult = !!predictionResult && predictionResult.details.length > 0
 
     if (deltaY > 20) {
       if (currentView === 'input' && canGoToResult) {
