@@ -18,24 +18,37 @@ import {
   AlertDialogOverlay,
   useDisclosure,
   Tooltip,
-  Divider
+  Divider,
+  Input,
+  Flex
 } from '@chakra-ui/react'
-import { FaTrash, FaPlus, FaAngleLeft, FaAngleRight } from 'react-icons/fa'
-import { useAtom, useSetAtom } from 'jotai'
-import { motion } from 'framer-motion'
 import {
-  scenariosAtom,
+  FaTrash,
+  FaPlus,
+  FaAngleLeft,
+  FaAngleRight,
+  FaSearch,
+  FaTimes
+} from 'react-icons/fa'
+import { useAtom, useSetAtom } from 'jotai'
+import { motion, AnimatePresence } from 'framer-motion'
+
+import {
+  scenariosAtom, // scenariosAtom も引き続きインポート（filteredScenariosAtom の元データとして必要）
   createScenarioAtom,
   deleteScenarioAtom,
   isControlPanelOpenAtom,
-  activeScenarioIdsAtom
+  activeScenarioIdsAtom,
+  searchQueryAtom, // 🔽 追加：searchQueryAtom をインポート
+  filteredScenariosAtom // 🔽 追加：filteredScenariosAtom をインポート
 } from '@renderer/store/atoms'
 
 // アニメーション用のコンポーネント
 const MotionButton = motion.create(Button)
 
 export function ControlPanel(): React.JSX.Element {
-  const [scenarios] = useAtom(scenariosAtom)
+  // const [scenarios] = useAtom(scenariosAtom) // 🔽 削除：直接 scenariosAtom を使用しない
+  const [scenariosToDisplay] = useAtom(filteredScenariosAtom) // 🔽 変更：フィルタリングされたシナリオを使用
   const createScenario = useSetAtom(createScenarioAtom)
   const deleteScenario = useSetAtom(deleteScenarioAtom)
   const [activeIds, setActiveIds] = useAtom(activeScenarioIdsAtom)
@@ -45,6 +58,12 @@ export function ControlPanel(): React.JSX.Element {
   const cancelRef = useRef<HTMLButtonElement>(null)
   const [targetIdToDelete, setTargetIdToDelete] = useState<string | null>(null)
   const [isClickOpen, setIsClickOpen] = useState<boolean>(false)
+
+  // const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false) // 🔽 削除：ローカルステートではなくアトムを使用
+  // const [searchQuery, setSearchQuery] = useState<string>('') // 🔽 削除：ローカルステートではなくアトムを使用
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false) // 検索フォームの開閉はUIの状態なのでローカルステートのまま
+  const [searchQuery, setSearchQuery] = useAtom(searchQueryAtom) // 🔽 変更：searchQueryAtom を使用
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const handleDeleteClick = (scenarioId: string): void => {
     setTargetIdToDelete(scenarioId)
@@ -79,21 +98,17 @@ export function ControlPanel(): React.JSX.Element {
   const handleMouseEnter = (): void => {
     isHoveringRef.current = true
 
-    // Leave timerをクリア
     if (leaveTimerRef.current !== null) {
       clearTimeout(leaveTimerRef.current)
       leaveTimerRef.current = null
     }
 
-    // 既存のenter timerをクリア
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current)
     }
 
-    // 500ms後にパネルを開く
     timerRef.current = window.setTimeout(() => {
       if (isHoveringRef.current) {
-        // まだホバー中の場合のみ開く
         setIsOpen(true)
       }
       timerRef.current = null
@@ -103,20 +118,21 @@ export function ControlPanel(): React.JSX.Element {
   const handleMouseLeave = (): void => {
     isHoveringRef.current = false
 
-    // Enter timerをクリア
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current)
       timerRef.current = null
     }
 
-    // 200ms後にパネルを閉じる（クリックで開いていない場合）
     leaveTimerRef.current = window.setTimeout(() => {
       if (!isClickOpen) {
         setIsOpen(false)
+        setIsSearchOpen(false)
+        setSearchQuery('')
       }
       leaveTimerRef.current = null
     }, 200)
   }
+
   const handleOpenClick = (): void => {
     if (!isOpen) {
       setIsOpen(true)
@@ -126,15 +142,15 @@ export function ControlPanel(): React.JSX.Element {
     } else {
       setIsOpen(false)
       setIsClickOpen(false)
+      setIsSearchOpen(false)
+      setSearchQuery('')
     }
   }
 
-  // IconButtonのマウスイベントを処理する関数
   const handleIconButtonMouseEnter = (e: React.MouseEvent): void => {
     e.stopPropagation()
-    isHoveringRef.current = false // IconButton上ではホバー状態を無効にする
+    isHoveringRef.current = false
 
-    // Enter timerをクリア（パネルが開かないようにする）
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current)
       timerRef.current = null
@@ -143,25 +159,45 @@ export function ControlPanel(): React.JSX.Element {
 
   const handleIconButtonMouseLeave = (e: React.MouseEvent): void => {
     e.stopPropagation()
-    // IconButtonから出た時は親要素のmouseenterが再度発火するので特に処理不要
+  }
+
+  const handleSearchClick = (): void => {
+    setIsSearchOpen(true)
+    setTimeout(() => {
+      searchInputRef.current?.focus()
+    }, 50)
+  }
+
+  const handleClearSearch = (): void => {
+    setSearchQuery('')
+    setIsSearchOpen(false)
+  }
+
+  const handleSearchBlur = (): void => {
+    setTimeout(() => {
+      if (searchQuery === '') {
+        setIsSearchOpen(false)
+      }
+    }, 100)
   }
 
   return (
     <>
       <Box
-        w={isOpen ? '280px' : '74px'} // 幅を広げる
+        w={isOpen ? '280px' : '74px'}
         h="100vh"
         bg="brand.white"
-        p={4} // 余白を調整
-        boxShadow="lg" // 影を少し強く
+        p={4}
+        boxShadow="lg"
         zIndex={10}
-        transition="width 0.2s ease-in-out" // アニメーションを滑らかに
+        transition="width 0.2s ease-in-out"
         flexShrink={0}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
       >
         <VStack align="stretch" spacing={4} h="100%">
-          <HStack justifyContent="flex-start">
+          <HStack h={"42px"} justifyContent="flex-start" alignItems="center">
+            {/* パネルトグルボタン */}
             <Tooltip label={!isOpen ? '開く' : '閉じる'} placement="right">
               <IconButton
                 aria-label="Toggle Panel"
@@ -172,6 +208,90 @@ export function ControlPanel(): React.JSX.Element {
                 onMouseLeave={handleIconButtonMouseLeave}
               />
             </Tooltip>
+
+            {/* 検索機能のUI - アニメーション改善 */}
+            {isOpen && (
+              <Flex flex="1" justifyContent="flex-end" alignItems="center" overflow="hidden">
+                <motion.div
+                  layout
+                  initial={false}
+                  animate={{
+                    width: isSearchOpen ? '100%' : '32px',
+                    opacity: 1
+                  }}
+                  transition={{ duration: 0.2, ease: 'easeInOut' }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <HStack
+                    spacing={isSearchOpen ? 2 : 0}
+                    bg="gray.100"
+                    borderRadius="full"
+                    pl={isSearchOpen ? 2 : 0}
+                    pr={isSearchOpen ? 1 : 0}
+                    py={isSearchOpen ? 1 : 0}
+                    border={isSearchOpen ? '1px solid' : 'none'}
+                    borderColor="brand.accent"
+                    cursor={!isSearchOpen ? 'pointer' : 'default'}
+                    onClick={!isSearchOpen ? handleSearchClick : undefined}
+                    w="100%"
+                  >
+                    <IconButton
+                      aria-label="Search Scenarios"
+                      icon={<FaSearch />}
+                      variant="ghost"
+                      size="sm"
+                      onClick={isSearchOpen ? undefined : handleSearchClick}
+                      _hover={{ bg: 'transparent' }}
+                      _active={{ bg: 'transparent' }}
+                      pointerEvents={isSearchOpen ? 'none' : 'auto'}
+                    />
+
+                    <AnimatePresence>
+                      {isSearchOpen && (
+                        <motion.div
+                          initial={{ width: 0, opacity: 0 }}
+                          animate={{ width: '100%', opacity: 1 }}
+                          exit={{ width: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          style={{ overflow: 'hidden', flexGrow: 1 }}
+                        >
+                          <Input
+                            ref={searchInputRef}
+                            placeholder="検索..."
+                            size="md"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            variant="unstyled"
+                            flex="1"
+                            h="auto"
+                            onBlur={handleSearchBlur}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    <AnimatePresence>
+                      {isSearchOpen && searchQuery && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0 }}
+                          transition={{ duration: 0.1 }}
+                        >
+                          <IconButton
+                            aria-label="Clear Search"
+                            icon={<FaTimes />}
+                            size="xs"
+                            variant="ghost"
+                            onClick={handleClearSearch}
+                          />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </HStack>
+                </motion.div>
+              </Flex>
+            )}
           </HStack>
 
           <Tooltip label="新規シナリオ作成" isDisabled={isOpen} placement="right">
@@ -183,7 +303,6 @@ export function ControlPanel(): React.JSX.Element {
               justifyContent="flex-start"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              // py={6} // ボタンの高さを調整
             >
               <FaPlus />
               {isOpen && (
@@ -198,8 +317,12 @@ export function ControlPanel(): React.JSX.Element {
 
           {isOpen && (
             <Box flex="1" overflowY="auto" pr={2}>
-              {scenarios.length > 0 ? (
-                scenarios.map((scenario) => {
+              <Text fontSize={'lg'} fontWeight={'bold'} mb={4} noOfLines={1}>
+                シナリオリスト
+              </Text>
+              {/* 🔽 変更：scenariosToDisplay (フィルタリングされたシナリオ) を使用 */}
+              {scenariosToDisplay.length > 0 ? (
+                scenariosToDisplay.map((scenario) => {
                   const isActive = activeIds.includes(scenario.id)
                   return (
                     <HStack key={scenario.id} w="100%" mb={2}>
@@ -230,9 +353,10 @@ export function ControlPanel(): React.JSX.Element {
                 })
               ) : (
                 <Text fontSize="sm" color="brand.darkGray" textAlign="center" mt={4}>
-                  シナリオはありません
+                  {searchQuery ? '該当するシナリオはありません' : 'シナリオはありません'} {/* 検索中のメッセージを追加 */}
                 </Text>
               )}
+              {/* 🔼 */}
             </Box>
           )}
         </VStack>

@@ -143,3 +143,22 @@ export const calculatePredictionsAtom = atom(null, async (get, set) => {
     results.filter((r) => r !== null) as { scenarioId: string; result: PredictionResult }[]
   )
 })
+
+// 🔽 追加：検索クエリを保持するアトム
+export const searchQueryAtom = atom<string>('')
+
+// 🔽 追加：検索クエリに基づいてフィルタリングされたシナリオのリストを返す派生アトム
+export const filteredScenariosAtom = atom<Scenario[]>((get) => {
+  const allScenarios = get(scenariosAtom)
+  const query = get(searchQueryAtom).toLowerCase() // 検索クエリを小文字に変換
+
+  if (!query) {
+    // 検索クエリが空の場合は全てのシナリオを返す
+    return allScenarios
+  }
+
+  // シナリオのタイトルが検索クエリを部分一致で含むものをフィルタリング
+  return allScenarios.filter(scenario =>
+    scenario.title.toLowerCase().includes(query)
+  )
+})

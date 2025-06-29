@@ -131,7 +131,7 @@ export function GraphView(): React.JSX.Element {
   }
 
   return (
-    <Drawer isOpen={isOpen} placement="right" onClose={(): void => setIsOpen(false)} size="full">
+    <Drawer isOpen={isOpen} placement="right" onClose={(): void => setIsOpen(false)} size="xl">
       <DrawerOverlay />
       <DrawerContent>
         <DrawerCloseButton />

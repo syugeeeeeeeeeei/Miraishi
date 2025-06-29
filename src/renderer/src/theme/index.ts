@@ -7,8 +7,9 @@ import { extendTheme } from '@chakra-ui/react'
 const colors = {
   brand: {
     base: '#f8f5e8',
-    main: '#2c2e42',
-    accent: '#00A3A3',
+    darkBase: '#fff2c8',
+    main: '#3a4383',
+    accent: '#1cbaba',
     white: '#FFFFFF',
     lightGray: '#D0D0D0',
     darkGray: '#4A4A4A',
