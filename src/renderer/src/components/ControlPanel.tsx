@@ -4,35 +4,35 @@
  */
 import React, { useRef, useState } from 'react'
 import {
-  Box,
-  VStack,
-  Button,
-  Text,
-  HStack,
-  IconButton,
   AlertDialog,
   AlertDialogBody,
+  AlertDialogContent,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogContent,
   AlertDialogOverlay,
-  useDisclosure,
-  Tooltip,
+  Box,
+  Button,
   Divider,
+  Flex,
+  HStack,
+  IconButton,
   Input,
-  Flex
+  Text,
+  Tooltip,
+  useDisclosure,
+  VStack
 } from '@chakra-ui/react'
-import { FaTrash, FaPlus, FaAngleLeft, FaAngleRight, FaSearch, FaTimes } from 'react-icons/fa'
+import { FaAngleLeft, FaAngleRight, FaPlus, FaSearch, FaTimes, FaTrash } from 'react-icons/fa'
 import { useAtom, useSetAtom } from 'jotai'
-import { motion, AnimatePresence } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 
 import {
+  activeScenarioIdsAtom,
   createScenarioAtom,
   deleteScenarioAtom,
+  filteredScenariosAtom,
   isControlPanelOpenAtom,
-  activeScenarioIdsAtom,
-  searchQueryAtom, // 🔽 追加：searchQueryAtom をインポート
-  filteredScenariosAtom // 🔽 追加：filteredScenariosAtom をインポート
+  searchQueryAtom
 } from '@renderer/store/atoms'
 
 // アニメーション用のコンポーネント

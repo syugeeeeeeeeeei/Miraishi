@@ -2,14 +2,14 @@
  * @file src/main/index.ts
  * @description Mainプロセス (バックエンドロジック)
  */
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import Store from 'electron-store'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
-import type { Scenario, TaxSchema, PredictionResult, GraphViewSettings } from '../types/miraishi'
+import type { GraphViewSettings, PredictionResult, Scenario, TaxSchema } from '../types/miraishi'
 import { scenarioSchema } from './lib/validators'
 import { calculatePrediction } from './lib/calculator'
 
@@ -45,11 +45,11 @@ function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 1180,
-    minHeight: 768,
+    minWidth: 1200,
+    minHeight: 800,
     show: false,
     autoHideMenuBar: true,
-    ...(process.platform === 'linux' ? { icon } : {}),
+    icon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false

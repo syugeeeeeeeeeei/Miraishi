@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { Scenario, PredictionResult, GraphViewSettings } from '../types/miraishi'
+import type { GraphViewSettings, PredictionResult, Scenario } from '../types/miraishi'
 
 // Rendererプロセスに公開するAPIを定義
 export const api = {

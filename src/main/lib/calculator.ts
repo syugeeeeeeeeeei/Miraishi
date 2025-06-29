@@ -3,11 +3,11 @@
  * @description 給与予測計算エンジンのコアロジック
  */
 import type {
-  Scenario,
-  TaxSchema,
-  PredictionResult,
   AnnualSalaryDetail,
-  GraphViewSettings
+  GraphViewSettings,
+  PredictionResult,
+  Scenario,
+  TaxSchema
 } from '@myTypes/miraishi'
 
 export function calculatePrediction(

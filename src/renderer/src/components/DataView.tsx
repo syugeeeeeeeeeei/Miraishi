@@ -2,46 +2,46 @@
  * @file src/renderer/src/components/DataView.tsx
  * @description 選択された複数シナリオをスライド形式で表示・編集するコンポーネント（スクロール終端検知・最終版）
  */
-import React, { useState, useEffect, useTransition, useRef } from 'react'
+import React, { useEffect, useRef, useState, useTransition } from 'react'
 import {
+  Badge,
   Box,
-  Heading,
-  Text,
-  VStack,
+  Button,
+  Center,
+  Flex,
   FormControl,
   FormLabel,
-  Input,
-  Button,
+  Heading,
   HStack,
+  Icon,
   IconButton,
-  Select,
-  Switch,
-  Spinner,
+  Input,
   NumberInput,
   NumberInputField,
-  Flex,
-  useToast,
+  Select,
+  SimpleGrid,
   Slider,
-  SliderTrack,
   SliderFilledTrack,
   SliderThumb,
-  Badge,
-  SimpleGrid,
-  Center,
-  Icon
+  SliderTrack,
+  Spinner,
+  Switch,
+  Text,
+  useToast,
+  VStack
 } from '@chakra-ui/react'
-import { FaPlus, FaTrash, FaChevronLeft, FaChevronRight } from 'react-icons/fa'
-import { useAtom, useSetAtom, useAtomValue } from 'jotai'
-import { motion, AnimatePresence, Variants } from 'framer-motion'
+import { FaChevronLeft, FaChevronRight, FaPlus, FaTrash } from 'react-icons/fa'
+import { useAtom, useAtomValue, useSetAtom } from 'jotai'
+import { AnimatePresence, motion, Variants } from 'framer-motion'
 import {
   activeScenariosAtom,
-  updateScenarioAtom,
-  predictionResultsAtom,
   calculatePredictionsAtom,
+  createScenarioAtom,
   graphViewSettingsAtom,
-  createScenarioAtom
+  predictionResultsAtom,
+  updateScenarioAtom
 } from '@renderer/store/atoms'
-import type { Scenario, Allowance, PredictionResult } from '@myTypes/miraishi'
+import type { Allowance, PredictionResult, Scenario } from '@myTypes/miraishi'
 import { v4 as uuidv4 } from 'uuid'
 import { CalculationResult } from './CalculationResult'
 import { FiTrendingUp } from 'react-icons/fi'
@@ -113,7 +113,7 @@ function DataViewCard({ scenario, predictionResult }: DataViewCardProps): React.
 
     bounceRef.current = null // 内部スクロールがなければ常にリセット
 
-    const handleTransition = (direction: 'up' | 'down', nextView: 'input' | 'result') => {
+    const handleTransition = (direction: 'up' | 'down', nextView: 'input' | 'result'): void => {
       setIsWheeling(true)
       setSlideDirection(direction)
       setCurrentView(nextView)

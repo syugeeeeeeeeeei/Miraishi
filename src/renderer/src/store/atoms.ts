@@ -3,7 +3,7 @@
  * @description Jotaiを使用したグローバル状態管理のAtom定義
  */
 import { atom } from 'jotai'
-import type { Scenario, PredictionResult, GraphViewSettings } from '@myTypes/miraishi'
+import type { GraphViewSettings, PredictionResult, Scenario } from '@myTypes/miraishi'
 
 // --- データ関連のAtom ---
 

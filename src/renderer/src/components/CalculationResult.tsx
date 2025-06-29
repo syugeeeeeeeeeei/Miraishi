@@ -6,26 +6,26 @@ import React from 'react'
 import {
   Box,
   Heading,
-  VStack,
-  SimpleGrid,
-  Text,
   HStack,
-  Tag,
-  useDisclosure,
   Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
   ModalBody,
   ModalCloseButton,
+  ModalContent,
+  ModalHeader,
+  ModalOverlay,
+  SimpleGrid,
   Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
+  TableCaption,
   TableContainer,
-  TableCaption
+  Tag,
+  Tbody,
+  Td,
+  Text,
+  Th,
+  Thead,
+  Tr,
+  useDisclosure,
+  VStack
 } from '@chakra-ui/react'
 import type { PredictionResult } from '@myTypes/miraishi'
 
@@ -39,8 +39,8 @@ const formatYen = (value: number): string => {
 }
 
 const BreakdownPanel: React.FC<{ breakdown: PredictionResult['details'][0]['breakdown'] }> = ({
-                                                                                                breakdown
-                                                                                              }) => (
+  breakdown
+}) => (
   <Box p={4} bg={'gray.50'}>
     <SimpleGrid
       columns={{ base: 1, md: 2 }}

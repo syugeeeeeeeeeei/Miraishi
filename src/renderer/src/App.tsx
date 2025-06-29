@@ -3,36 +3,21 @@
  * @description アプリケーションのルートコンポーネント
  */
 import React, { useEffect } from 'react'
+import { ChakraProvider, Flex, VStack } from '@chakra-ui/react' // Box, HStack, Heading, Text, Image, Spacer, Button をインポート
+import { Provider as JotaiProvider, useSetAtom } from 'jotai' // useAtomValue をインポート
 import {
-  ChakraProvider,
-  Flex,
-  Box,
-  HStack,
-  Heading,
-  Text,
-  Image,
-  Spacer,
-  Button,
-  VStack
-} from '@chakra-ui/react' // Box, HStack, Heading, Text, Image, Spacer, Button をインポート
-import { Provider as JotaiProvider, useSetAtom, useAtomValue } from 'jotai' // useAtomValue をインポート
-import {
-  Chart as ChartJS,
   CategoryScale,
+  Chart as ChartJS,
+  Legend,
   LinearScale,
-  PointElement,
   LineElement,
+  PointElement,
   Title,
-  Tooltip,
-  Legend
+  Tooltip
 } from 'chart.js'
 
 import { theme } from './theme'
-import {
-  loadScenariosAtom,
-  isGraphViewVisibleAtom,
-  predictionResultsAtom
-} from '@renderer/store/atoms' // predictionResultsAtom, isGraphViewVisibleAtom をインポート
+import { loadScenariosAtom } from '@renderer/store/atoms' // predictionResultsAtom, isGraphViewVisibleAtom をインポート
 import { ControlPanel } from '@renderer/components/ControlPanel'
 import { DataView } from '@renderer/components/DataView'
 import { GraphView } from '@renderer/components/GraphView'

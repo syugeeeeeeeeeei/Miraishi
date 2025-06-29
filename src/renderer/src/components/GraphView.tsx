@@ -4,35 +4,35 @@
  */
 import React, { useEffect, useState, useTransition } from 'react'
 import {
+  Badge,
+  Box,
+  Checkbox,
+  CheckboxGroup,
   Drawer,
   DrawerBody,
+  DrawerCloseButton,
+  DrawerContent,
   DrawerHeader,
   DrawerOverlay,
-  DrawerContent,
-  DrawerCloseButton,
-  Box,
   Flex,
-  VStack,
   FormControl,
   FormLabel,
+  Heading,
   Slider,
-  SliderTrack,
   SliderFilledTrack,
   SliderThumb,
-  Heading,
-  Badge,
-  CheckboxGroup,
+  SliderTrack,
+  Spinner,
   Stack,
-  Checkbox,
-  Spinner
+  VStack
 } from '@chakra-ui/react'
 import { useAtom, useSetAtom } from 'jotai'
 import {
-  isGraphViewVisibleAtom,
-  predictionResultsAtom,
-  graphViewSettingsAtom,
+  activeScenariosAtom,
   calculatePredictionsAtom,
-  activeScenariosAtom
+  graphViewSettingsAtom,
+  isGraphViewVisibleAtom,
+  predictionResultsAtom
 } from '@renderer/store/atoms'
 import { Line } from 'react-chartjs-2'
 import type { ChartData } from 'chart.js'
