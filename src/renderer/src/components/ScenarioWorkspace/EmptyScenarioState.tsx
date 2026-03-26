@@ -5,7 +5,7 @@ import { createScenarioAtom } from '@renderer/store/atoms'
 import { FiTrendingUp } from 'react-icons/fi'
 import { FaPlus } from 'react-icons/fa'
 
-export const WelcomeScreen = (): React.JSX.Element => {
+export const EmptyScenarioState = (): React.JSX.Element => {
   const createScenario = useSetAtom(createScenarioAtom)
   return (
     <Center w={'100%'} h="100%" p={8} bg="gray.50">

@@ -1,5 +1,5 @@
 /**
- * @file src/renderer/src/components/DataView/index.tsx
+ * @file src/renderer/src/components/ScenarioWorkspace/index.tsx
  * @description 選択された複数シナリオをスライド形式で表示・編集する親コンポーネント
  */
 import React, { useEffect, useState } from 'react'
@@ -13,10 +13,10 @@ import {
   calculatePredictionsAtom,
   predictionResultsAtom
 } from '@renderer/store/atoms'
-import { DataViewCard } from './DataViewCard'
-import { WelcomeScreen } from './WelcomeScreen'
+import { ScenarioCard } from './ScenarioCard'
+import { EmptyScenarioState } from './EmptyScenarioState'
 
-export function DataView(): React.JSX.Element {
+export function ScenarioWorkspace(): React.JSX.Element {
   const [activeScenarios] = useAtom(activeScenariosAtom)
   const [predictionResults] = useAtom(predictionResultsAtom)
   const calculatePredictions = useSetAtom(calculatePredictionsAtom)
@@ -48,7 +48,7 @@ export function DataView(): React.JSX.Element {
   }
 
   if (activeScenarios.length === 0) {
-    return <WelcomeScreen />
+    return <EmptyScenarioState />
   }
 
   const currentScenario = activeScenarios[currentIndex]
@@ -128,7 +128,7 @@ export function DataView(): React.JSX.Element {
               style={{ width: '100%', height: '100%', position: 'absolute' }}
             >
               {currentScenario && (
-                <DataViewCard scenario={currentScenario} predictionResult={currentResult} />
+                <ScenarioCard scenario={currentScenario} predictionResult={currentResult} />
               )}
             </motion.div>
           </AnimatePresence>

@@ -1,5 +1,5 @@
 /**
- * @file src/renderer/src/components/DataView/DataViewCard.tsx
+ * @file src/renderer/src/components/ScenarioWorkspace/ScenarioCard.tsx
  * @description 入力ビューと結果ビューを切り替えるカードUIのコンテナ
  */
 import React, { useCallback, useEffect, useState } from 'react'
@@ -13,15 +13,15 @@ import {
 } from '@renderer/store/atoms'
 import type { Allowance, PredictionResult, Scenario } from '@myTypes/miraishi'
 import { v4 as uuidv4 } from 'uuid'
-import { InputView } from './InputView'
-import { ResultView } from './ResultView'
+import { ScenarioInputForm } from './ScenarioInputForm'
+import { ScenarioResultPanel } from './ScenarioResultPanel'
 
-interface DataViewCardProps {
+interface ScenarioCardProps {
   scenario: Scenario
   predictionResult: PredictionResult | null
 }
 
-export function DataViewCard({ scenario, predictionResult }: DataViewCardProps): React.JSX.Element {
+export function ScenarioCard({ scenario, predictionResult }: ScenarioCardProps): React.JSX.Element {
   const updateScenario = useSetAtom(updateScenarioAtom)
   const calculatePredictions = useSetAtom(calculatePredictionsAtom)
   const [editableScenario, setEditableScenario] = useState<Scenario>(scenario)
@@ -203,7 +203,7 @@ export function DataViewCard({ scenario, predictionResult }: DataViewCardProps):
             }}
           >
             {currentView === 'input' ? (
-              <InputView
+              <ScenarioInputForm
                 scenario={editableScenario}
                 updateNestedState={updateNestedState}
                 handleKeyDown={handleKeyDown}
@@ -211,7 +211,7 @@ export function DataViewCard({ scenario, predictionResult }: DataViewCardProps):
                 removeAllowance={removeAllowance}
               />
             ) : (
-              <ResultView
+              <ScenarioResultPanel
                 predictionResult={predictionResult}
                 predictionPeriod={graphViewSettings.predictionPeriod}
               />

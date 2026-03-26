@@ -18,7 +18,7 @@ import {
 import { FaPlus, FaTrash } from 'react-icons/fa'
 import type { Scenario } from '@myTypes/miraishi'
 
-interface InputViewProps {
+interface ScenarioInputFormProps {
   scenario: Scenario
   updateNestedState: (path: string, value: any) => void
   handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void
@@ -26,13 +26,13 @@ interface InputViewProps {
   removeAllowance: (index: number) => void
 }
 
-export const InputView = ({
+export const ScenarioInputForm = ({
   scenario,
   updateNestedState,
   handleKeyDown,
   addAllowance,
   removeAllowance
-}: InputViewProps): React.JSX.Element => (
+}: ScenarioInputFormProps): React.JSX.Element => (
   <Box h="100%" w="100%" overflowY="auto" p={{ base: 3, md: 6 }}>
     <VStack spacing={4} align="stretch">
       {/* 給与・賞与 */}

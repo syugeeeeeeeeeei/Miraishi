@@ -1,5 +1,5 @@
 /**
- * @file src/renderer/src/components/CalculationResult.tsx
+ * @file src/renderer/src/components/ScenarioWorkspace/PredictionResultTable.tsx
  * @description 計算結果をChakra UIのTableで表示するコンポーネント
  */
 import React from 'react'
@@ -159,7 +159,7 @@ const ResultRow = ({ detail }: { detail: PredictionResult['details'][0] }): Reac
   )
 }
 
-export function CalculationResult({ result, predictionPeriod }: Props): React.JSX.Element {
+export function PredictionResultTable({ result, predictionPeriod }: Props): React.JSX.Element {
   return (
     <VStack spacing={4} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
       <Heading size="md" px={2}>

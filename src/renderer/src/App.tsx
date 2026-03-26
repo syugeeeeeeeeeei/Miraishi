@@ -20,7 +20,7 @@ import { theme } from './theme'
 import { loadScenariosAtom } from '@renderer/store/atoms'
 // 🔽 --- パス修正 --- 🔽
 import { ControlPanel } from '@renderer/components/ControlPanel'
-import { DataView } from '@renderer/components/DataView'
+import { ScenarioWorkspace } from '@renderer/components/ScenarioWorkspace'
 import { GraphView } from '@renderer/components/GraphView'
 import { Header } from '@renderer/components/Header'
 // 🔼 --- パス修正 --- 🔼
@@ -42,7 +42,7 @@ function AppContent(): React.JSX.Element {
         <ControlPanel />
         <VStack w={'100%'} h={'100vh'} spacing={0}>
           <Header />
-          <DataView />
+          <ScenarioWorkspace />
         </VStack>
         <GraphView />
       </Flex>
