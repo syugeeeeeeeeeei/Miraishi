@@ -16,6 +16,7 @@ import {
   Select,
   SimpleGrid,
   Switch,
+  Text,
   VStack
 } from '@chakra-ui/react'
 import { FaPlus, FaTrash } from 'react-icons/fa'
@@ -80,6 +81,9 @@ export const ScenarioInputForm = ({
   removeAllowance
 }: ScenarioInputFormProps): React.JSX.Element => {
   const hasSpouse = scenario.deductions?.dependents?.hasSpouse ?? false
+  const bonusMode = scenario.bonus?.mode ?? 'fixed'
+  const bonusMonths = scenario.bonus?.months ?? 2
+  const isBonusLinkedToBasic = bonusMode === 'basicSalaryMonths'
 
   return (
     <Box h="100%" w="100%" overflowY="auto" p={{ base: 3, md: 4 }}>
@@ -91,7 +95,7 @@ export const ScenarioInputForm = ({
           </Heading>
           <SimpleGrid columns={{ base: 1, md: 2, '2xl': 3 }} spacing={3}>
             <FormControl>
-              <FormLabel fontSize={LABEL_FONT_SIZE}>基本給 (月額)</FormLabel>
+              <FormLabel fontSize={LABEL_FONT_SIZE}>想定初任給 (月額)</FormLabel>
               <YenNumberInput
                 value={scenario.initialBasicSalary ?? 0}
                 onChange={(_, valueAsNumber): void =>
@@ -103,15 +107,73 @@ export const ScenarioInputForm = ({
             </FormControl>
 
             <FormControl>
-              <FormLabel fontSize={LABEL_FONT_SIZE}>年間ボーナス (総額)</FormLabel>
-              <YenNumberInput
-                value={scenario.annualBonus ?? 0}
-                onChange={(_, valueAsNumber): void =>
-                  updateNestedState('annualBonus', isNaN(valueAsNumber) ? 0 : valueAsNumber)
-                }
-                placeholder="例: 600000"
-                handleKeyDown={handleKeyDown}
-              />
+              <FormLabel fontSize={LABEL_FONT_SIZE}>ボーナス</FormLabel>
+              <VStack align="stretch" spacing={2}>
+                <ButtonGroup isAttached size={CONTROL_SIZE} variant="outline">
+                  <Button
+                    colorScheme={isBonusLinkedToBasic ? 'gray' : 'blue'}
+                    variant={isBonusLinkedToBasic ? 'outline' : 'solid'}
+                    onClick={(): void =>
+                      updateNestedState('bonus', {
+                        mode: 'fixed',
+                        months: bonusMonths
+                      })
+                    }
+                  >
+                    固定額
+                  </Button>
+                  <Button
+                    colorScheme={isBonusLinkedToBasic ? 'blue' : 'gray'}
+                    variant={isBonusLinkedToBasic ? 'solid' : 'outline'}
+                    onClick={(): void =>
+                      updateNestedState('bonus', {
+                        mode: 'basicSalaryMonths',
+                        months: bonusMonths > 0 ? bonusMonths : 2
+                      })
+                    }
+                  >
+                    基本給連動
+                  </Button>
+                </ButtonGroup>
+
+                {isBonusLinkedToBasic ? (
+                  <NumberInput
+                    size={CONTROL_SIZE}
+                    value={bonusMonths}
+                    onChange={(_, valueAsNumber): void =>
+                      updateNestedState('bonus', {
+                        mode: 'basicSalaryMonths',
+                        months: isNaN(valueAsNumber) ? 0 : valueAsNumber
+                      })
+                    }
+                    min={0}
+                    precision={1}
+                    step={0.5}
+                  >
+                    <InputGroup size={CONTROL_SIZE}>
+                      <NumberInputField
+                        pr="4.4rem"
+                        placeholder="例: 2.0"
+                        bg="white"
+                        onKeyDown={handleKeyDown}
+                        inputMode="decimal"
+                      />
+                      <InputRightElement w="4.4rem" color="gray.500" fontSize="sm" pointerEvents="none">
+                        ヶ月分
+                      </InputRightElement>
+                    </InputGroup>
+                  </NumberInput>
+                ) : (
+                  <YenNumberInput
+                    value={scenario.annualBonus ?? 0}
+                    onChange={(_, valueAsNumber): void =>
+                      updateNestedState('annualBonus', isNaN(valueAsNumber) ? 0 : valueAsNumber)
+                    }
+                    placeholder="例: 600000"
+                    handleKeyDown={handleKeyDown}
+                  />
+                )}
+              </VStack>
             </FormControl>
 
             <FormControl>
@@ -161,7 +223,7 @@ export const ScenarioInputForm = ({
               </FormControl>
 
               {scenario.probation?.enabled && (
-                <SimpleGrid columns={{ base: 1, lg: 2, '2xl': 3 }} spacing={3} pt={2}>
+                <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={3} pt={2}>
                   <FormControl>
                     <FormLabel fontSize={LABEL_FONT_SIZE} mb={1}>
                       期間 (ヶ月)
@@ -193,23 +255,12 @@ export const ScenarioInputForm = ({
                       handleKeyDown={handleKeyDown}
                     />
                   </FormControl>
-
-                  <FormControl>
-                    <FormLabel fontSize={LABEL_FONT_SIZE} mb={1}>
-                      固定残業代 (月額)
-                    </FormLabel>
-                    <YenNumberInput
-                      value={scenario.probation?.fixedOvertime ?? 0}
-                      onChange={(_, valueAsNumber): void =>
-                        updateNestedState(
-                          'probation.fixedOvertime',
-                          isNaN(valueAsNumber) ? 0 : valueAsNumber
-                        )
-                      }
-                      handleKeyDown={handleKeyDown}
-                    />
-                  </FormControl>
                 </SimpleGrid>
+              )}
+              {scenario.probation?.enabled && (
+                <Text fontSize="sm" color="gray.600">
+                  試用期間中の固定残業代も「基本給 + 固定手当」に連動して自動計算されます。
+                </Text>
               )}
             </VStack>
 
@@ -236,22 +287,8 @@ export const ScenarioInputForm = ({
               </FormControl>
 
               {scenario.overtime?.fixedOvertime?.enabled && (
-                <HStack flexWrap="wrap" spacing={3} alignItems="flex-end">
-                  <FormControl flex="1" minW={{ base: '100%', md: '220px' }}>
-                    <FormLabel fontSize={LABEL_FONT_SIZE}>金額 (月額)</FormLabel>
-                    <YenNumberInput
-                      value={scenario.overtime?.fixedOvertime?.amount ?? 0}
-                      onChange={(_, valueAsNumber): void =>
-                        updateNestedState(
-                          'overtime.fixedOvertime.amount',
-                          isNaN(valueAsNumber) ? 0 : valueAsNumber
-                        )
-                      }
-                      handleKeyDown={handleKeyDown}
-                    />
-                  </FormControl>
-
-                  <FormControl flex="1" minW={{ base: '100%', md: '220px' }}>
+                <VStack align="stretch" spacing={2}>
+                  <FormControl maxW={{ base: '100%', md: '260px' }}>
                     <FormLabel fontSize={LABEL_FONT_SIZE}>みなし時間 (h)</FormLabel>
                     <NumberInput
                       size={CONTROL_SIZE}
@@ -267,13 +304,32 @@ export const ScenarioInputForm = ({
                       <NumberInputField onKeyDown={handleKeyDown} bg="white" inputMode="numeric" />
                     </NumberInput>
                   </FormControl>
-                </HStack>
+                  <Text fontSize="sm" color="gray.600">
+                    固定残業代（月額）は毎年自動計算されます: （残業計算用月給 ÷ 160）× 1.25 × みなし時間
+                  </Text>
+                </VStack>
               )}
             </VStack>
 
             {/* 扶養・控除 */}
             <VStack spacing={3} align="stretch" {...sectionCardProps}>
               <Heading size="md">扶養・控除</Heading>
+              <FormControl>
+                <FormLabel fontSize={LABEL_FONT_SIZE}>前年度収入 (住民税計算用)</FormLabel>
+                <YenNumberInput
+                  value={scenario.deductions?.previousYearIncome ?? 0}
+                  onChange={(_, valueAsNumber): void =>
+                    updateNestedState(
+                      'deductions.previousYearIncome',
+                      isNaN(valueAsNumber) ? 0 : valueAsNumber
+                    )
+                  }
+                  handleKeyDown={handleKeyDown}
+                />
+                <Text mt={1} fontSize="xs" color="gray.600">
+                  新卒入社など前年度収入がない場合は 0 円のままで問題ありません。
+                </Text>
+              </FormControl>
               <HStack justifyContent="space-between" alignItems="center" flexWrap="wrap" spacing={3}>
                 <FormLabel mb="0" fontSize={LABEL_FONT_SIZE} fontWeight="medium">
                   配偶者の有無

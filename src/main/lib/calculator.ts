@@ -16,6 +16,10 @@ export function calculatePrediction(
 ): PredictionResult {
   const details: AnnualSalaryDetail[] = []
   let currentBasicSalary = scenario.initialBasicSalary
+  let previousYearTaxableIncomeForResidentTax = Math.max(
+    0,
+    scenario.deductions?.previousYearIncome ?? 0
+  )
 
   // --- 🔽 最適化: 事前計算 🔽 ---
   const monthlyAllowancesForOvertime = (scenario.allowances ?? []).reduce((total, allowance) => {
@@ -38,12 +42,17 @@ export function calculatePrediction(
     let annualAllowances: number
     let annualFixedOvertime: number
     let annualVariableOvertime: number
+    let annualBonusCalculated: number
     let grossAnnualIncome: number
+    const isProbationApplied = year === 1 && Boolean(scenario.probation?.enabled)
+    const probationMonths = isProbationApplied ? (scenario.probation?.durationMonths ?? 0) : 0
+    const bonusMode = scenario.bonus?.mode ?? 'fixed'
+    const bonusMonths = scenario.bonus?.months ?? 2
+    const fixedOvertimePremiumRate = 1.25
 
     // --- 🔽 最適化: 残業代計算を効率化 🔽 ---
     let monthlySalaryForOvertimeCalc: number
-    if (year === 1 && scenario.probation?.enabled) {
-      const probationMonths = scenario.probation.durationMonths
+    if (isProbationApplied) {
       const afterProbationMonths = 12 - probationMonths
       const probSalary = (scenario.probation.basicSalary ?? 0) * probationMonths
       const afterProbSalary = (scenario.initialBasicSalary ?? 0) * afterProbationMonths
@@ -58,33 +67,53 @@ export function calculatePrediction(
       ? (scenario.overtime.fixedOvertime.hours ?? 0)
       : 0
     const overtimeHours = Math.max(0, settings.averageOvertimeHours - fixedHours)
-    annualVariableOvertime = hourlyWage * 1.25 * overtimeHours * 12
+    annualVariableOvertime = hourlyWage * fixedOvertimePremiumRate * overtimeHours * 12
     // --- 🔼 最適化: 残業代計算を効率化 🔼 ---
 
-    if (year === 1 && scenario.probation?.enabled) {
-      const probationMonths = scenario.probation.durationMonths
+    if (isProbationApplied) {
       let totalBasicSalaryForYear1 = 0
-      let totalFixedOvertimeForYear1 = 0
 
       for (let month = 1; month <= 12; month++) {
         if (month <= probationMonths) {
           totalBasicSalaryForYear1 += scenario.probation.basicSalary ?? 0
-          totalFixedOvertimeForYear1 += scenario.probation.fixedOvertime ?? 0
         } else {
           totalBasicSalaryForYear1 += scenario.initialBasicSalary ?? 0
-          if (scenario.overtime?.fixedOvertime?.enabled) {
-            totalFixedOvertimeForYear1 += scenario.overtime.fixedOvertime.amount ?? 0
-          }
         }
       }
       annualBasicSalary = totalBasicSalaryForYear1
-      annualFixedOvertime = totalFixedOvertimeForYear1
     } else {
       annualBasicSalary = currentBasicSalary * 12
-      annualFixedOvertime = scenario.overtime?.fixedOvertime?.enabled
-        ? (scenario.overtime.fixedOvertime.amount ?? 0) * 12
-        : 0
     }
+
+    // 固定残業代は「基本給連動」のみを採用
+    if (fixedHours > 0) {
+      if (isProbationApplied) {
+        let totalFixedOvertimeForYear1 = 0
+        for (let month = 1; month <= 12; month++) {
+          const monthlyBasicSalaryForFixedOvertime =
+            month <= probationMonths
+              ? (scenario.probation.basicSalary ?? 0)
+              : (scenario.initialBasicSalary ?? 0)
+          const monthlyBaseForFixedOvertime =
+            monthlyBasicSalaryForFixedOvertime + monthlyAllowancesForOvertime
+          totalFixedOvertimeForYear1 +=
+            (monthlyBaseForFixedOvertime / 160) * fixedOvertimePremiumRate * fixedHours
+        }
+        annualFixedOvertime = totalFixedOvertimeForYear1
+      } else {
+        const monthlyBaseForFixedOvertime = currentBasicSalary + monthlyAllowancesForOvertime
+        annualFixedOvertime =
+          (monthlyBaseForFixedOvertime / 160) * fixedOvertimePremiumRate * fixedHours * 12
+      }
+    } else {
+      annualFixedOvertime = 0
+    }
+
+    const monthlyBasicSalaryForBonus = annualBasicSalary / 12
+    annualBonusCalculated =
+      bonusMode === 'basicSalaryMonths'
+        ? monthlyBasicSalaryForBonus * bonusMonths
+        : (scenario.annualBonus ?? 0)
 
     // --- 🔽 最適化: 手当計算を効率化 🔽 ---
     // 事前計算した固定手当をベースに、期間や割合が変動するものだけをループ内で計算
@@ -118,7 +147,7 @@ export function calculatePrediction(
       annualBasicSalary +
       annualFixedOvertime +
       annualAllowances +
-      (scenario.annualBonus ?? 0) +
+      annualBonusCalculated +
       annualVariableOvertime
 
     // ... (以降の控除額、税金計算は変更なし) ...
@@ -142,31 +171,41 @@ export function calculatePrediction(
       grossAnnualIncome * taxSchema.socialInsurance.employmentInsurance.rate
     const socialInsuranceTotal = healthInsurance + pensionInsurance + employmentInsurance
 
-    let totalIncomeDeductions = (taxSchema.deductions.basic ?? 0) + socialInsuranceTotal
-    if (scenario.deductions?.dependents?.hasSpouse) {
-      totalIncomeDeductions += taxSchema.deductions.spouse ?? 0
-    }
-    totalIncomeDeductions +=
-      (scenario.deductions?.dependents?.numberOfDependents ?? 0) *
-      (taxSchema.deductions.dependent ?? 0)
+    const basicDeduction = taxSchema.deductions.basic ?? 0
+    const spouseDeduction = taxSchema.deductions.spouse ?? 0
+    const spouseDeductionApplied = Boolean(scenario.deductions?.dependents?.hasSpouse)
+    const dependentDeductionPerPerson = taxSchema.deductions.dependent ?? 0
+    const numberOfDependents = scenario.deductions?.dependents?.numberOfDependents ?? 0
     const otherDeductionsTotal = (scenario.deductions?.otherDeductions ?? []).reduce(
       (sum, d) => sum + d.amount,
       0
     )
+    let totalIncomeDeductions = basicDeduction + socialInsuranceTotal
+    if (spouseDeductionApplied) {
+      totalIncomeDeductions += spouseDeduction
+    }
+    totalIncomeDeductions += numberOfDependents * dependentDeductionPerPerson
     totalIncomeDeductions += otherDeductionsTotal
 
     const taxableIncome = Math.max(0, grossAnnualIncome - totalIncomeDeductions)
 
-    const incomeTaxRate = taxSchema.incomeTaxRates.find(
-      (r) => taxableIncome <= (r.threshold ?? Infinity)
-    )
-    const incomeTax = incomeTaxRate
-      ? Math.max(0, taxableIncome * incomeTaxRate.rate - incomeTaxRate.deduction)
-      : 0
-    const residentTax = taxableIncome * taxSchema.residentTaxRate
+    const incomeTaxRule =
+      taxSchema.incomeTaxRates.find((r) => taxableIncome <= (r.threshold ?? Infinity)) ?? {
+        threshold: null,
+        rate: 0,
+        deduction: 0
+      }
+    const incomeTax = Math.max(0, taxableIncome * incomeTaxRule.rate - incomeTaxRule.deduction)
+    const residentTaxBaseIncome = previousYearTaxableIncomeForResidentTax
+    const residentTaxBaseSource =
+      year === 1 ? 'previousYearInput' : 'previousSimulationYearTaxableIncome'
+    const residentTax = residentTaxBaseIncome * taxSchema.residentTaxRate
 
     const totalDeductions = socialInsuranceTotal + incomeTax + residentTax
     const netAnnualIncome = grossAnnualIncome - totalDeductions
+    const growthMultiplier = 1 + (scenario.salaryGrowthRate ?? 0) / 100
+    const baseSalaryForGrowth = isProbationApplied ? scenario.initialBasicSalary : currentBasicSalary
+    const nextYearMonthlyBasicSalary = baseSalaryForGrowth * growthMultiplier
 
     details.push({
       year,
@@ -177,7 +216,7 @@ export function calculatePrediction(
         income: {
           annualBasicSalary: Math.round(annualBasicSalary),
           annualAllowances: Math.round(annualAllowances),
-          annualBonus: Math.round(scenario.annualBonus ?? 0),
+          annualBonus: Math.round(annualBonusCalculated),
           annualFixedOvertime: Math.round(annualFixedOvertime),
           annualVariableOvertime: Math.round(annualVariableOvertime)
         },
@@ -188,12 +227,58 @@ export function calculatePrediction(
           incomeTax: Math.round(incomeTax),
           residentTax: Math.round(residentTax)
         }
+      },
+      calculationTrace: {
+        rules: {
+          salaryGrowthRatePercent: scenario.salaryGrowthRate ?? 0,
+          bonusMode,
+          bonusMonths,
+          averageOvertimeHours: settings.averageOvertimeHours,
+          fixedOvertimeHours: fixedHours,
+          overtimePremiumRate: fixedOvertimePremiumRate,
+          healthInsuranceRate: taxSchema.socialInsurance.healthInsurance.rate / 2,
+          pensionInsuranceRate: taxSchema.socialInsurance.pension.rate / 2,
+          employmentInsuranceRate: taxSchema.socialInsurance.employmentInsurance.rate,
+          residentTaxRate: taxSchema.residentTaxRate
+        },
+        intermediate: {
+          isProbationApplied,
+          probationMonths,
+          monthlyBasicSalaryForBonus,
+          monthlySalaryForOvertimeCalc,
+          hourlyWage,
+          overtimeHours,
+          monthlyGrossIncome,
+          standardMonthlyRemuneration,
+          socialInsuranceTotal,
+          totalIncomeDeductions,
+          taxableIncome,
+          residentTaxBaseIncome,
+          residentTaxBaseSource
+        },
+        deductionRules: {
+          basicDeduction,
+          spouseDeduction,
+          spouseDeductionApplied,
+          dependentDeductionPerPerson,
+          numberOfDependents,
+          otherDeductionsTotal
+        },
+        incomeTaxRule: {
+          bracketUpper: incomeTaxRule.threshold,
+          rate: incomeTaxRule.rate,
+          deduction: incomeTaxRule.deduction
+        },
+        nextYearProjection: {
+          baseSalaryForGrowth,
+          growthMultiplier,
+          nextYearMonthlyBasicSalary
+        }
       }
     })
 
-    const baseSalaryForGrowth =
-      year === 1 && scenario.probation?.enabled ? scenario.initialBasicSalary : currentBasicSalary
-    currentBasicSalary = baseSalaryForGrowth * (1 + (scenario.salaryGrowthRate ?? 0) / 100)
+    previousYearTaxableIncomeForResidentTax = taxableIncome
+    currentBasicSalary = nextYearMonthlyBasicSalary
   }
 
   return { details }

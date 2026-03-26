@@ -55,6 +55,9 @@ export function ScenarioWorkspace(): React.JSX.Element {
   const [slideDirection, setSlideDirection] = useState<SlideDirection>('left')
   const wheelDeltaAccumulatorRef = useRef<number>(0)
   const lastWheelSwitchAtRef = useRef<number>(0)
+  const scenarioRevisionKey = activeScenarios
+    .map((scenario) => `${scenario.id}-${new Date(scenario.updatedAt).getTime()}`)
+    .join(',')
 
   useEffect((): void => {
     setCurrentIndex(0)
@@ -71,7 +74,7 @@ export function ScenarioWorkspace(): React.JSX.Element {
     } else {
       calculatePredictions()
     }
-  }, [activeScenarios.length, calculatePredictions])
+  }, [activeScenarios.length, scenarioRevisionKey, calculatePredictions])
 
   const goToNext = (): void => {
     setSlideDirection('left')

@@ -40,9 +40,7 @@ export type Allowance = {
 export type FixedOvertime = {
   /** 固定残業代制度の有無 */
   enabled: boolean
-  /** 固定残業代の月額 */
-  amount: number
-  /** 金額に含まれる固定残業時間 */
+  /** みなし固定残業時間（h/月） */
   hours: number
 }
 
@@ -70,6 +68,20 @@ export type Overtime = {
 }
 
 /**
+ * ボーナスの計算モードを定義します。
+ */
+export type Bonus = {
+  /**
+   * ボーナス計算モード
+   * - `fixed`: 固定額
+   * - `basicSalaryMonths`: 基本給の○ヶ月分
+   */
+  mode: 'fixed' | 'basicSalaryMonths'
+  /** 基本給連動時の支給月数 */
+  months: number
+}
+
+/**
  * 試用期間に関する設定を定義します。
  */
 export type Probation = {
@@ -79,8 +91,6 @@ export type Probation = {
   durationMonths: number
   /** 期間中の基本給（月額） */
   basicSalary: number
-  /** 期間中の固定残業代（月額） */
-  fixedOvertime: number
 }
 
 /**
@@ -113,6 +123,8 @@ export type Deductions = {
   dependents: Dependents
   /** その他の控除項目（iDeCoなど）の配列 */
   otherDeductions: OtherDeduction[]
+  /** 前年度収入（住民税計算用。新卒など前年度収入がない場合は0） */
+  previousYearIncome?: number
 }
 
 /**
@@ -123,14 +135,16 @@ export type Scenario = {
   id: string
   /** ユーザーが設定するシナリオの名称 */
   title: string
-  /** シミュレーション開始時の基本給（月額） */
+  /** シミュレーション開始時の想定初任給（月額） */
   initialBasicSalary: number
   /** 手当の配列 */
   allowances: Allowance[]
   /** 残業代の設定 */
   overtime: Overtime
-  /** 年間のボーナス支給額（固定） */
+  /** 年間のボーナス支給額（固定モード時に使用） */
   annualBonus: number
+  /** ボーナス計算モード（未指定時は固定額扱い） */
+  bonus?: Bonus
   /** 試用期間の設定 */
   probation: Probation
   /** 年間の給与成長率（%） */
@@ -239,6 +253,57 @@ export interface AnnualSalaryDetail {
       employmentInsurance: number
       incomeTax: number
       residentTax: number
+    }
+  }
+
+  /**
+   * 計算フロー可視化用の中間値・ルール情報
+   */
+  calculationTrace: {
+    rules: {
+      salaryGrowthRatePercent: number
+      bonusMode: 'fixed' | 'basicSalaryMonths'
+      bonusMonths: number
+      averageOvertimeHours: number
+      fixedOvertimeHours: number
+      overtimePremiumRate: number
+      healthInsuranceRate: number
+      pensionInsuranceRate: number
+      employmentInsuranceRate: number
+      residentTaxRate: number
+    }
+    intermediate: {
+      isProbationApplied: boolean
+      probationMonths: number
+      monthlyBasicSalaryForBonus: number
+      monthlySalaryForOvertimeCalc: number
+      hourlyWage: number
+      overtimeHours: number
+      monthlyGrossIncome: number
+      standardMonthlyRemuneration: number
+      socialInsuranceTotal: number
+      totalIncomeDeductions: number
+      taxableIncome: number
+      residentTaxBaseIncome: number
+      residentTaxBaseSource: 'previousYearInput' | 'previousSimulationYearTaxableIncome'
+    }
+    deductionRules: {
+      basicDeduction: number
+      spouseDeduction: number
+      spouseDeductionApplied: boolean
+      dependentDeductionPerPerson: number
+      numberOfDependents: number
+      otherDeductionsTotal: number
+    }
+    incomeTaxRule: {
+      bracketUpper: number | null
+      rate: number
+      deduction: number
+    }
+    nextYearProjection: {
+      baseSalaryForGrowth: number
+      growthMultiplier: number
+      nextYearMonthlyBasicSalary: number
     }
   }
 }

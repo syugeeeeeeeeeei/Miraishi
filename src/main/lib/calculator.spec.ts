@@ -41,13 +41,14 @@ const baseScenario: Omit<Scenario, 'id' | 'createdAt' | 'updatedAt' | 'title'> =
   salaryGrowthRate: 2,
   allowances: [],
   overtime: {
-    fixedOvertime: { enabled: false, amount: 0, hours: 0 },
+    fixedOvertime: { enabled: false, hours: 0 },
     variableOvertime: { enabled: false, calculationMethod: 'basic' }
   },
-  probation: { enabled: false, durationMonths: 0, basicSalary: 0, fixedOvertime: 0 },
+  probation: { enabled: false, durationMonths: 0, basicSalary: 0 },
   deductions: {
     dependents: { hasSpouse: false, numberOfDependents: 0 },
-    otherDeductions: []
+    otherDeductions: [],
+    previousYearIncome: 0
   }
 }
 
@@ -74,6 +75,32 @@ describe('calculatePrediction', () => {
     expect(result.details[2].grossAnnualIncome).toBeCloseTo(4345440, 0)
   })
 
+  it('ボーナスを基本給連動（ヶ月）モードで計算できること', () => {
+    const scenario: Scenario = {
+      ...baseScenario,
+      id: 'bonus-months-test',
+      title: 'bonus-months-test',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      annualBonus: 0,
+      bonus: {
+        mode: 'basicSalaryMonths',
+        months: 2
+      }
+    }
+
+    const result = calculatePrediction({ scenario, settings: defaultSettings }, dummyTaxSchema)
+
+    // 1年目: 基本給360万 + ボーナス(30万×2)60万 = 420万
+    expect(result.details[0].grossAnnualIncome).toBeCloseTo(4200000, 0)
+
+    // 2年目: 基本給367.2万 + ボーナス(30.6万×2)61.2万 = 428.4万
+    expect(result.details[1].grossAnnualIncome).toBeCloseTo(4284000, 0)
+
+    // 3年目: 基本給374.544万 + ボーナス(31.212万×2)62.424万 = 436.968万
+    expect(result.details[2].grossAnnualIncome).toBeCloseTo(4369680, 0)
+  })
+
   it('試用期間が正しく反映されること', () => {
     const scenario: Scenario = {
       ...baseScenario,
@@ -81,7 +108,7 @@ describe('calculatePrediction', () => {
       title: 'probation-test',
       createdAt: new Date(),
       updatedAt: new Date(),
-      probation: { enabled: true, durationMonths: 3, basicSalary: 250000, fixedOvertime: 0 }
+      probation: { enabled: true, durationMonths: 3, basicSalary: 250000 }
     }
     const result = calculatePrediction({ scenario, settings: defaultSettings }, dummyTaxSchema)
 
@@ -151,5 +178,103 @@ describe('calculatePrediction', () => {
     // ボーナス = 60万
     // 合計 = 374.544 + 42.7272 + 60 = 477.2712万
     expect(result.details[2].grossAnnualIncome).toBeCloseTo(4772712, 0)
+  })
+
+  it('給与成長率100%で基本給が毎年倍増すること', () => {
+    const scenario: Scenario = {
+      ...baseScenario,
+      id: '4',
+      title: 'growth-100-test',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      annualBonus: 0,
+      salaryGrowthRate: 100
+    }
+
+    const result = calculatePrediction({ scenario, settings: defaultSettings }, dummyTaxSchema)
+
+    expect(result.details[0].breakdown.income.annualBasicSalary).toBeCloseTo(3600000, 0)
+    expect(result.details[1].breakdown.income.annualBasicSalary).toBeCloseTo(7200000, 0)
+    expect(result.details[2].breakdown.income.annualBasicSalary).toBeCloseTo(14400000, 0)
+  })
+
+  it('固定残業代が基本給連動で毎年増加すること', () => {
+    const scenario: Scenario = {
+      ...baseScenario,
+      id: '5',
+      title: 'fixed-overtime-linked-test',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      overtime: {
+        fixedOvertime: { enabled: true, hours: 20 },
+        variableOvertime: { enabled: false, calculationMethod: 'basic' }
+      }
+    }
+
+    const result = calculatePrediction({ scenario, settings: defaultSettings }, dummyTaxSchema)
+
+    // 1年目: (30万 ÷ 160) × 1.25 × 20 × 12 = 562,500
+    expect(result.details[0].breakdown.income.annualFixedOvertime).toBeCloseTo(562500, 0)
+    // 2年目: (30.6万 ÷ 160) × 1.25 × 20 × 12 = 573,750
+    expect(result.details[1].breakdown.income.annualFixedOvertime).toBeCloseTo(573750, 0)
+    // 3年目: (31.212万 ÷ 160) × 1.25 × 20 × 12 = 585,225
+    expect(result.details[2].breakdown.income.annualFixedOvertime).toBeCloseTo(585225, 0)
+  })
+
+  it('住民税が前年ベースで計算され、1年目は前年度収入入力値が使われること', () => {
+    const scenario: Scenario = {
+      ...baseScenario,
+      id: '6',
+      title: 'resident-tax-lag-test',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      annualBonus: 0,
+      salaryGrowthRate: 0,
+      deductions: {
+        ...baseScenario.deductions,
+        previousYearIncome: 1500000
+      }
+    }
+
+    const result = calculatePrediction({ scenario, settings: defaultSettings }, dummyTaxSchema)
+    const year1 = result.details[0]
+    const year2 = result.details[1]
+
+    // 1年目の住民税は入力した前年度収入を基準に計算
+    expect(year1.breakdown.deductions.residentTax).toBeCloseTo(150000, 0)
+    expect(year1.calculationTrace.intermediate.residentTaxBaseIncome).toBeCloseTo(1500000, 0)
+    expect(year1.calculationTrace.intermediate.residentTaxBaseSource).toBe('previousYearInput')
+
+    // 2年目の住民税は1年目の課税所得を基準に計算
+    expect(year2.calculationTrace.intermediate.residentTaxBaseIncome).toBeCloseTo(
+      year1.calculationTrace.intermediate.taxableIncome,
+      0
+    )
+    expect(year2.calculationTrace.intermediate.residentTaxBaseSource).toBe(
+      'previousSimulationYearTaxableIncome'
+    )
+  })
+
+  it('前年度収入が0の場合、1年目の住民税が0になること', () => {
+    const scenario: Scenario = {
+      ...baseScenario,
+      id: '7',
+      title: 'new-graduate-resident-tax-test',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      annualBonus: 0,
+      salaryGrowthRate: 0,
+      deductions: {
+        ...baseScenario.deductions,
+        previousYearIncome: 0
+      }
+    }
+
+    const result = calculatePrediction({ scenario, settings: defaultSettings }, dummyTaxSchema)
+    const year1 = result.details[0]
+
+    expect(year1.breakdown.deductions.residentTax).toBe(0)
+    expect(year1.calculationTrace.intermediate.residentTaxBaseIncome).toBe(0)
+    expect(year1.calculationTrace.intermediate.residentTaxBaseSource).toBe('previousYearInput')
   })
 })

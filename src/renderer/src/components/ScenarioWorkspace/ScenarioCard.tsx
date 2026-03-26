@@ -44,19 +44,22 @@ export function ScenarioCard({ scenario, predictionResult }: ScenarioCardProps):
     })
   }, [])
 
-  const handleSaveAndRecalculate = useCallback((): void => {
-    if (JSON.stringify(editableScenario) !== JSON.stringify(scenario)) {
-      updateScenario(editableScenario)
-      calculatePredictions()
-      toast({
-        title: '自動保存・再計算が実行されました。',
-        description: `「${editableScenario.title}」の変更が反映されました。`,
-        status: 'info',
-        duration: 2000,
-        isClosable: true,
-        position: 'bottom-right'
-      })
+  const handleSaveAndRecalculate = useCallback(async (): Promise<void> => {
+    if (JSON.stringify(editableScenario) === JSON.stringify(scenario)) {
+      return
     }
+
+    await updateScenario(editableScenario)
+    await calculatePredictions()
+
+    toast({
+      title: '自動保存・再計算が実行されました。',
+      description: `「${editableScenario.title}」の変更が反映されました。`,
+      status: 'info',
+      duration: 2000,
+      isClosable: true,
+      position: 'bottom-right'
+    })
   }, [editableScenario, scenario, updateScenario, calculatePredictions, toast])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>): void => {
@@ -96,7 +99,7 @@ export function ScenarioCard({ scenario, predictionResult }: ScenarioCardProps):
       flexDirection="column"
       onBlur={(e: React.FocusEvent<HTMLDivElement>): void => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-          handleSaveAndRecalculate()
+          void handleSaveAndRecalculate()
         }
       }}
     >

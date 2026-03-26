@@ -33,20 +33,24 @@ export const createScenarioAtom = atom(null, async (_get, set) => {
       initialBasicSalary: 300000,
       allowances: [],
       overtime: {
-        fixedOvertime: { enabled: false, amount: 0, hours: 0 },
+        fixedOvertime: { enabled: false, hours: 0 },
         variableOvertime: { enabled: true, calculationMethod: 'basic' }
       },
       annualBonus: 0,
+      bonus: {
+        mode: 'fixed',
+        months: 2
+      },
       probation: {
         enabled: false,
         durationMonths: 3,
-        basicSalary: 280000,
-        fixedOvertime: 0
+        basicSalary: 280000
       },
       salaryGrowthRate: 2.5,
       deductions: {
         dependents: { hasSpouse: false, numberOfDependents: 0 },
-        otherDeductions: []
+        otherDeductions: [],
+        previousYearIncome: 0
       }
     }
     const result = await window.api.createScenario(newScenarioData)
