@@ -26,6 +26,8 @@ import { Header } from '@renderer/components/Header'
 // 🔼 --- パス修正 --- 🔼
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend)
+ChartJS.defaults.font.family =
+  "'Zen Maru Gothic', 'M PLUS Rounded 1c', 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo', sans-serif"
 
 function AppContent(): React.JSX.Element {
   const loadScenarios = useSetAtom(loadScenariosAtom)

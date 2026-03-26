@@ -17,13 +17,21 @@ const colors = {
   }
 }
 
+const fontFamilyJa =
+  "'Zen Maru Gothic', 'M PLUS Rounded 1c', 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo', sans-serif"
+
+const fonts = {
+  body: fontFamilyJa,
+  heading: fontFamilyJa
+}
+
 const styles = {
   global: {
     // 🔽 ----- フォントを全体に適用 ----- 🔽
     body: {
       bg: 'brand.base',
       color: 'brand.main',
-      fontFamily: "'Zen Maru Gothic', sans-serif"
+      fontFamily: 'body'
     },
     // 🔽 ----- スクロールバーのデザインを修正 ----- 🔽
     '::-webkit-scrollbar': {
@@ -43,4 +51,4 @@ const styles = {
   }
 }
 
-export const theme = extendTheme({ colors, styles })
+export const theme = extendTheme({ colors, fonts, styles })

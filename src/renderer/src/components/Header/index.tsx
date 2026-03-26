@@ -2,7 +2,7 @@ import { Button, Heading, HStack, Image, Spacer, Text } from '@chakra-ui/react'
 import { FaChartLine } from 'react-icons/fa'
 import React from 'react'
 import icon from '@renderer/assets/icon.png?asset' // icon をインポート
-import '@fontsource/m-plus-rounded-1c/700.css'
+import '@fontsource/m-plus-rounded-1c/japanese-700.css'
 import { useAtomValue, useSetAtom } from 'jotai/index'
 import { isGraphViewVisibleAtom, predictionResultsAtom } from '@renderer/store/atoms' // フォントをインポート
 

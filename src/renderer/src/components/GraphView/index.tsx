@@ -46,6 +46,9 @@ const CHART_COLORS = [
   'rgb(153, 102, 255)' // Purple
 ]
 
+const CHART_FONT_FAMILY =
+  "'Zen Maru Gothic', 'M PLUS Rounded 1c', 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo', sans-serif"
+
 export function GraphView(): React.JSX.Element {
   const [isOpen, setIsOpen] = useAtom(isGraphViewVisibleAtom)
   const [results] = useAtom(predictionResultsAtom)
@@ -53,6 +56,7 @@ export function GraphView(): React.JSX.Element {
   const [activeScenarios] = useAtom(activeScenariosAtom)
   const calculatePredictions = useSetAtom(calculatePredictionsAtom)
   const [isCalculating, setIsCalculating] = useState<boolean>(false)
+  const [isChartFontReady, setIsChartFontReady] = useState<boolean>(false)
   const [isPending, startTransition] = useTransition()
 
   const handleSliderChangeEnd = (type: 'period' | 'overtime', value: number): void => {
@@ -76,6 +80,28 @@ export function GraphView(): React.JSX.Element {
     handleRecalculate()
   }, [settings, calculatePredictions, activeScenarios.length])
 
+  useEffect((): (() => void) => {
+    let isMounted = true
+
+    const waitForFonts = async (): Promise<void> => {
+      if (!('fonts' in document)) {
+        if (isMounted) setIsChartFontReady(true)
+        return
+      }
+      try {
+        await document.fonts.ready
+      } finally {
+        if (isMounted) setIsChartFontReady(true)
+      }
+    }
+
+    waitForFonts()
+
+    return (): void => {
+      isMounted = false
+    }
+  }, [])
+
   if (!results && !isCalculating) {
     return <></>
   }
@@ -84,12 +110,35 @@ export function GraphView(): React.JSX.Element {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: { position: 'top' as const },
-      title: { display: true, text: '年収推移予測' }
+      legend: {
+        position: 'top' as const,
+        labels: {
+          font: {
+            family: CHART_FONT_FAMILY
+          }
+        }
+      },
+      title: {
+        display: true,
+        text: '年収推移予測',
+        font: {
+          family: CHART_FONT_FAMILY
+        }
+      }
     },
     scales: {
+      x: {
+        ticks: {
+          font: {
+            family: CHART_FONT_FAMILY
+          }
+        }
+      },
       y: {
         ticks: {
+          font: {
+            family: CHART_FONT_FAMILY
+          },
           callback: function (value: string | number) {
             return (Number(value) / 10000).toLocaleString() + '万円'
           }
@@ -139,7 +188,7 @@ export function GraphView(): React.JSX.Element {
         <DrawerBody>
           <Flex h="100%">
             <Box flex="0.7" pr={8} position="relative">
-              {(isCalculating || (results.length === 0 && activeScenarios.length > 0)) && (
+              {(!isChartFontReady || isCalculating || (results.length === 0 && activeScenarios.length > 0)) && (
                 <Flex
                   position="absolute"
                   w="100%"
@@ -152,7 +201,7 @@ export function GraphView(): React.JSX.Element {
                   <Spinner size="xl" />
                 </Flex>
               )}
-              {results.length > 0 && (
+              {results.length > 0 && isChartFontReady && (
                 <Box position="relative" h="400px">
                   <Line options={options} data={chartData} />
                 </Box>
