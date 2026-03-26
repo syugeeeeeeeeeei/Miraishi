@@ -205,7 +205,7 @@ export function ScenarioWorkspace(): React.JSX.Element {
               icon={<FaChevronLeft />}
               onClick={goToPrev}
               isRound
-              size="sm"
+              size="md"
               bg="white"
               boxShadow="lg"
               _hover={{ bg: 'gray.100' }}
@@ -220,7 +220,7 @@ export function ScenarioWorkspace(): React.JSX.Element {
               icon={<FaChevronRight />}
               onClick={goToNext}
               isRound
-              size="sm"
+              size="md"
               bg="white"
               boxShadow="lg"
               _hover={{ bg: 'gray.100' }}
@@ -266,8 +266,8 @@ export function ScenarioWorkspace(): React.JSX.Element {
             {activeScenarios.map((_, index) => (
               <Box
                 key={index}
-                w={2.5} // 少し大きくして視認性を向上
-                h={2.5}
+                w={3}
+                h={3}
                 bg={index === currentIndex ? 'brand.accent' : 'gray.300'}
                 borderRadius="full"
                 transition="background-color 0.2s"
