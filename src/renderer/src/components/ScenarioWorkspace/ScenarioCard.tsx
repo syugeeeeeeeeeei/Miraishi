@@ -3,8 +3,7 @@
  * @description 入力ビューと結果ビューを切り替えるカードUIのコンテナ
  */
 import React, { useCallback, useEffect, useState } from 'react'
-import { Box, Flex, Input, useToast } from '@chakra-ui/react'
-import { AnimatePresence, motion, Variants } from 'framer-motion'
+import { Box, Flex, Grid, Input, useToast } from '@chakra-ui/react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import {
   calculatePredictionsAtom,
@@ -27,77 +26,10 @@ export function ScenarioCard({ scenario, predictionResult }: ScenarioCardProps):
   const [editableScenario, setEditableScenario] = useState<Scenario>(scenario)
   const toast = useToast()
   const graphViewSettings = useAtomValue(graphViewSettingsAtom)
-  const [currentView, setCurrentView] = useState<'input' | 'result'>('input')
-  const [slideDirection, setSlideDirection] = useState<'up' | 'down'>('down')
-  const [isWheeling, setIsWheeling] = useState(false)
 
   useEffect((): void => {
     setEditableScenario(scenario)
-    setCurrentView('input')
   }, [scenario])
-
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>): void => {
-    if (isWheeling) {
-      e.stopPropagation()
-      return
-    }
-
-    let currentTarget = e.target as HTMLElement
-    while (currentTarget && currentTarget !== e.currentTarget) {
-      const isScrollable = currentTarget.scrollHeight > currentTarget.clientHeight
-      if (isScrollable) {
-        const atTop = currentTarget.scrollTop === 0
-        const atBottom =
-          Math.ceil(currentTarget.scrollTop + currentTarget.clientHeight) >=
-          currentTarget.scrollHeight
-
-        if (e.deltaY > 0 && !atBottom) return
-        if (e.deltaY < 0 && !atTop) return
-      }
-      currentTarget = currentTarget.parentElement as HTMLElement
-    }
-
-    const handleTransition = (direction: 'up' | 'down', nextView: 'input' | 'result'): void => {
-      setIsWheeling(true)
-      setSlideDirection(direction)
-      setCurrentView(nextView)
-      setTimeout(() => setIsWheeling(false), 500)
-    }
-
-    const { deltaY } = e
-    const canGoToResult = !!predictionResult && predictionResult.details.length > 0
-
-    if (deltaY > 20) {
-      if (currentView === 'input' && canGoToResult) {
-        handleTransition('up', 'result')
-      } else if (currentView === 'result') {
-        handleTransition('up', 'input')
-      }
-    } else if (deltaY < -20) {
-      if (currentView === 'result') {
-        handleTransition('down', 'input')
-      } else if (currentView === 'input' && canGoToResult) {
-        handleTransition('down', 'result')
-      }
-    }
-  }
-
-  const slideVariants: Variants = {
-    initial: (direction: 'up' | 'down') => ({
-      y: direction === 'up' ? '100%' : '-100%',
-      opacity: 0
-    }),
-    animate: {
-      y: 0,
-      opacity: 1,
-      transition: { duration: 0.4, ease: 'easeInOut' }
-    },
-    exit: (direction: 'up' | 'down') => ({
-      y: direction === 'up' ? '-100%' : '100%',
-      opacity: 0,
-      transition: { duration: 0.4, ease: 'easeInOut' }
-    })
-  }
 
   const updateNestedState = useCallback((path: string, value: any): void => {
     setEditableScenario((prev) => {
@@ -174,7 +106,8 @@ export function ScenarioCard({ scenario, predictionResult }: ScenarioCardProps):
           fontWeight="bold"
           fontSize="2xl"
           placeholder="シナリオ名"
-          w={{ base: '100%', md: '75%', lg: '50%' }}
+          w="100%"
+          maxW="720px"
           borderBottomColor="gray.400"
           _hover={{ borderColor: 'gray.600' }}
           _focus={{ borderColor: 'brand.accent' }}
@@ -186,38 +119,37 @@ export function ScenarioCard({ scenario, predictionResult }: ScenarioCardProps):
         />
       </Box>
 
-      <Box flex="1" minH={0} position="relative" overflow="hidden" onWheel={handleWheel}>
-        <AnimatePresence initial={false} custom={slideDirection}>
-          <motion.div
-            key={currentView}
-            custom={slideDirection}
-            variants={slideVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            style={{
-              height: '100%',
-              position: 'absolute',
-              width: '100%',
-              willChange: 'transform, opacity'
-            }}
+      <Box flex="1" minH={0}>
+        <Grid
+          h="100%"
+          minH={0}
+          templateColumns={{ base: '1fr', xl: 'minmax(0, 1.25fr) minmax(0, 0.95fr)' }}
+          templateRows={{ base: 'minmax(0, 1fr) minmax(0, 1fr)', xl: '1fr' }}
+          bg="gray.100"
+        >
+          <Box minW={0} minH={0} bg="gray.50">
+            <ScenarioInputForm
+              scenario={editableScenario}
+              updateNestedState={updateNestedState}
+              handleKeyDown={handleKeyDown}
+              addAllowance={addAllowance}
+              removeAllowance={removeAllowance}
+            />
+          </Box>
+          <Box
+            minW={0}
+            minH={0}
+            bg="gray.50"
+            borderColor="gray.200"
+            borderTopWidth={{ base: '1px', xl: '0px' }}
+            borderLeftWidth={{ base: '0px', xl: '1px' }}
           >
-            {currentView === 'input' ? (
-              <ScenarioInputForm
-                scenario={editableScenario}
-                updateNestedState={updateNestedState}
-                handleKeyDown={handleKeyDown}
-                addAllowance={addAllowance}
-                removeAllowance={removeAllowance}
-              />
-            ) : (
-              <ScenarioResultPanel
-                predictionResult={predictionResult}
-                predictionPeriod={graphViewSettings.predictionPeriod}
-              />
-            )}
-          </motion.div>
-        </AnimatePresence>
+            <ScenarioResultPanel
+              predictionResult={predictionResult}
+              predictionPeriod={graphViewSettings.predictionPeriod}
+            />
+          </Box>
+        </Grid>
       </Box>
     </Flex>
   )

@@ -26,6 +26,15 @@ interface ScenarioInputFormProps {
   removeAllowance: (index: number) => void
 }
 
+const sectionCardProps = {
+  bg: 'white',
+  p: 4,
+  borderRadius: 'lg',
+  borderWidth: '1px',
+  borderColor: 'gray.200',
+  boxShadow: 'sm'
+} as const
+
 export const ScenarioInputForm = ({
   scenario,
   updateNestedState,
@@ -33,14 +42,14 @@ export const ScenarioInputForm = ({
   addAllowance,
   removeAllowance
 }: ScenarioInputFormProps): React.JSX.Element => (
-  <Box h="100%" w="100%" overflowY="auto" p={{ base: 3, md: 6 }}>
+  <Box h="100%" w="100%" overflowY="auto" p={{ base: 3, md: 5 }}>
     <VStack spacing={4} align="stretch">
       {/* 給与・賞与 */}
-      <Box bg="white" p={4} borderRadius="md" boxShadow="sm">
+      <Box {...sectionCardProps}>
         <Heading size="sm" mb={4}>
           給与・賞与
         </Heading>
-        <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={4}>
+        <SimpleGrid columns={{ base: 1, md: 2, '2xl': 3 }} spacing={4}>
           <FormControl>
             <FormLabel fontSize="sm">基本給 (月額)</FormLabel>
             <NumberInput
@@ -84,7 +93,7 @@ export const ScenarioInputForm = ({
       <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={4} width="100%">
         <VStack spacing={4} align="stretch">
           {/* 試用期間 */}
-          <VStack spacing={3} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
+          <VStack spacing={3} align="stretch" {...sectionCardProps}>
             <FormControl display="flex" alignItems="center" justifyContent="space-between">
               <FormLabel htmlFor={`probation-enabled-${scenario.id}`} mb="0" fontWeight="bold">
                 試用期間
@@ -98,7 +107,7 @@ export const ScenarioInputForm = ({
               />
             </FormControl>
             {scenario.probation?.enabled && (
-              <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3} pt={2}>
+              <SimpleGrid columns={{ base: 1, lg: 2, '2xl': 3 }} spacing={3} pt={2}>
                 <FormControl>
                   <FormLabel fontSize="sm" mb={1}>
                     期間 (ヶ月)
@@ -149,7 +158,7 @@ export const ScenarioInputForm = ({
           </VStack>
 
           {/* 固定残業代 */}
-          <VStack spacing={3} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
+          <VStack spacing={3} align="stretch" {...sectionCardProps}>
             <Heading size="sm">固定残業代</Heading>
             <FormControl display="flex" alignItems="center" justifyContent="space-between">
               <FormLabel htmlFor={`fixed-overtime-${scenario.id}`} mb="0" fontSize="sm">
@@ -165,7 +174,7 @@ export const ScenarioInputForm = ({
               />
             </FormControl>
             {scenario.overtime?.fixedOvertime?.enabled && (
-              <HStack>
+              <HStack flexWrap="wrap" spacing={3}>
                 <FormControl>
                   <FormLabel fontSize="sm">金額 (月額)</FormLabel>
                   <NumberInput
@@ -197,7 +206,7 @@ export const ScenarioInputForm = ({
           </VStack>
 
           {/* 扶養・控除 */}
-          <VStack spacing={3} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
+          <VStack spacing={3} align="stretch" {...sectionCardProps}>
             <Heading size="sm">扶養・控除</Heading>
             <HStack justifyContent="space-between">
               <FormLabel htmlFor={`has-spouse-${scenario.id}`} mb="0" fontSize="sm">
@@ -229,7 +238,7 @@ export const ScenarioInputForm = ({
         </VStack>
 
         {/* 各種手当 */}
-        <VStack spacing={3} align="stretch" bg="white" p={4} borderRadius="md" boxShadow="sm">
+        <VStack spacing={3} align="stretch" {...sectionCardProps}>
           <HStack justifyContent="space-between" mb={2}>
             <Heading size="sm">各種手当</Heading>
             <Button leftIcon={<FaPlus />} size="xs" onClick={addAllowance}>

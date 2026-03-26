@@ -2,19 +2,49 @@
  * @file src/renderer/src/components/ScenarioWorkspace/index.tsx
  * @description 選択された複数シナリオをスライド形式で表示・編集する親コンポーネント
  */
-import React, { useEffect, useState } from 'react'
 import { Box, HStack, IconButton, Spinner, VStack } from '@chakra-ui/react'
-import { FaChevronLeft, FaChevronRight } from 'react-icons/fa'
+import { AnimatePresence, motion, type Variants } from 'framer-motion'
 import { useAtom, useSetAtom } from 'jotai'
-import { AnimatePresence, motion } from 'framer-motion'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { FaChevronLeft, FaChevronRight } from 'react-icons/fa'
 
 import {
   activeScenariosAtom,
   calculatePredictionsAtom,
   predictionResultsAtom
 } from '@renderer/store/atoms'
-import { ScenarioCard } from './ScenarioCard'
 import { EmptyScenarioState } from './EmptyScenarioState'
+import { ScenarioCard } from './ScenarioCard'
+
+const WHEEL_SWITCH_THRESHOLD = 52
+const WHEEL_SWITCH_COOLDOWN_MS = 300
+
+type SlideDirection = 'left' | 'right'
+
+const slideVariants: Variants = {
+  initial: (direction: SlideDirection) => ({
+    x: direction === 'left' ? 300 : -300,
+    opacity: 0
+  }),
+  animate: {
+    x: 0,
+    opacity: 1
+  },
+  exit: (direction: SlideDirection) => ({
+    x: direction === 'left' ? -300 : 300,
+    opacity: 0
+  })
+}
+
+const isEditableElement = (element: HTMLElement | null): boolean => {
+  if (!element) {
+    return false
+  }
+  if (element.isContentEditable) {
+    return true
+  }
+  return Boolean(element.closest('input, textarea, select, [role="textbox"], [role="spinbutton"]'))
+}
 
 export function ScenarioWorkspace(): React.JSX.Element {
   const [activeScenarios] = useAtom(activeScenariosAtom)
@@ -22,6 +52,9 @@ export function ScenarioWorkspace(): React.JSX.Element {
   const calculatePredictions = useSetAtom(calculatePredictionsAtom)
   const [isCalculating, setIsCalculating] = useState<boolean>(false)
   const [currentIndex, setCurrentIndex] = useState<number>(0)
+  const [slideDirection, setSlideDirection] = useState<SlideDirection>('left')
+  const wheelDeltaAccumulatorRef = useRef<number>(0)
+  const lastWheelSwitchAtRef = useRef<number>(0)
 
   useEffect((): void => {
     setCurrentIndex(0)
@@ -41,11 +74,89 @@ export function ScenarioWorkspace(): React.JSX.Element {
   }, [activeScenarios.length, calculatePredictions])
 
   const goToNext = (): void => {
+    setSlideDirection('left')
     setCurrentIndex((prev) => (prev + 1) % activeScenarios.length)
   }
   const goToPrev = (): void => {
+    setSlideDirection('right')
     setCurrentIndex((prev) => (prev - 1 + activeScenarios.length) % activeScenarios.length)
   }
+
+  const canSwitchScenarioByWheel = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>): boolean => {
+      if (activeScenarios.length <= 1) {
+        return false
+      }
+
+      if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+        return false
+      }
+
+      if (isEditableElement(document.activeElement as HTMLElement | null)) {
+        return false
+      }
+
+      let currentTarget = event.target as HTMLElement | null
+      while (currentTarget) {
+        const computedStyle = window.getComputedStyle(currentTarget)
+        const canScrollY =
+          ['auto', 'scroll', 'overlay'].includes(computedStyle.overflowY) &&
+          currentTarget.scrollHeight > currentTarget.clientHeight + 1
+
+        if (canScrollY) {
+          const atTop = currentTarget.scrollTop <= 0
+          const atBottom =
+            Math.ceil(currentTarget.scrollTop + currentTarget.clientHeight) >=
+            currentTarget.scrollHeight - 1
+
+          if (event.deltaY > 0 && !atBottom) {
+            return false
+          }
+          if (event.deltaY < 0 && !atTop) {
+            return false
+          }
+        }
+
+        if (currentTarget === event.currentTarget) {
+          break
+        }
+        currentTarget = currentTarget.parentElement
+      }
+
+      return true
+    },
+    [activeScenarios.length]
+  )
+
+  const handleWheelScenarioSwitch = useCallback(
+    (event: React.WheelEvent<HTMLDivElement>): void => {
+      if (!canSwitchScenarioByWheel(event)) {
+        wheelDeltaAccumulatorRef.current = 0
+        return
+      }
+
+      wheelDeltaAccumulatorRef.current += event.deltaY
+      if (Math.abs(wheelDeltaAccumulatorRef.current) < WHEEL_SWITCH_THRESHOLD) {
+        return
+      }
+
+      const now = Date.now()
+      if (now - lastWheelSwitchAtRef.current < WHEEL_SWITCH_COOLDOWN_MS) {
+        wheelDeltaAccumulatorRef.current = 0
+        return
+      }
+
+      event.preventDefault()
+
+      const direction = wheelDeltaAccumulatorRef.current > 0 ? 1 : -1
+      const nextSlideDirection: SlideDirection = direction > 0 ? 'right' : 'left'
+      wheelDeltaAccumulatorRef.current = 0
+      lastWheelSwitchAtRef.current = now
+      setSlideDirection(nextSlideDirection)
+      setCurrentIndex((prev) => (prev + direction + activeScenarios.length) % activeScenarios.length)
+    },
+    [activeScenarios.length, canSwitchScenarioByWheel]
+  )
 
   if (activeScenarios.length === 0) {
     return <EmptyScenarioState />
@@ -57,7 +168,7 @@ export function ScenarioWorkspace(): React.JSX.Element {
 
   return (
     <VStack w="100%" h="100%" bg="gray.50" spacing={0}>
-      <Box flex="1" w="100%" minH={0} position="relative" py={[2,4,6]} px={"60px"}>
+      <Box flex="1" w="100%" minH={0} position="relative" py={{ base: 2, md: 4, lg: 6 }} px={{ base: 4, md: 8, lg: 10 }}>
         <AnimatePresence>
           {isCalculating && (
             <motion.div
@@ -117,13 +228,22 @@ export function ScenarioWorkspace(): React.JSX.Element {
           </>
         )}
 
-        <Box w="100%" h="100%" position="relative">
-          <AnimatePresence initial={false} mode="wait">
+        <Box
+          w="100%"
+          maxW="1760px"
+          h="100%"
+          mx="auto"
+          position="relative"
+          onWheel={handleWheelScenarioSwitch}
+        >
+          <AnimatePresence initial={false} mode="wait" custom={slideDirection}>
             <motion.div
               key={currentScenario?.id || currentIndex}
-              initial={{ x: 300, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: -300, opacity: 0 }}
+              custom={slideDirection}
+              variants={slideVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
               transition={{ duration: 0.2, ease: 'easeInOut' }}
               style={{ width: '100%', height: '100%', position: 'absolute' }}
             >
