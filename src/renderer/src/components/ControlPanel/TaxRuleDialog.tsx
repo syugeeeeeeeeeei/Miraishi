@@ -156,7 +156,7 @@ const formatSchemaValuePreview = (value: unknown): string => {
     return String(value)
   }
   if (Array.isArray(value)) {
-    return `${value.length} 件の配列`
+    return `${value.length}件（配列）`
   }
   if (typeof value === 'object') {
     try {
@@ -625,7 +625,7 @@ export function TaxRuleDialog({
                                         </VStack>
                                       ) : (
                                         <Text fontSize="sm" color="gray.600">
-                                          関連づく計算式は未設定です。
+                                          関連する計算式は未設定です。
                                         </Text>
                                       )}
                                     </Box>

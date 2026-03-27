@@ -328,10 +328,6 @@ export const defaultTaxSchemaV2 = (): TaxSchemaV2 => ({
         name: '扶養控除額',
         description: '扶養人数1人あたりの控除額です。',
         formulaStepIds: ['deductions.dependent']
-      },
-      'formula.steps': {
-        name: '計算式ステップ',
-        description: '給与計算工程を式として定義した一覧です。'
       }
     }
   }
