@@ -11,6 +11,10 @@ import type {
 } from '@myTypes/miraishi'
 import { evaluateCompiledFormula } from './taxSchemaEngine'
 
+const DAYS_PER_YEAR = 365
+const LEGAL_WORKING_HOURS_PER_DAY = 8
+const DEFAULT_ANNUAL_HOLIDAYS = 120
+
 const resolveAllowanceActiveMonths = (
   duration: { type: 'unlimited' } | { type: 'years'; value: number } | { type: 'months'; value: number },
   year: number
@@ -33,6 +37,38 @@ const resolveAllowanceActiveMonths = (
 
 const toRounded = (value: number): number => Math.round(Number.isFinite(value) ? value : 0)
 
+const clampAnnualHolidays = (annualHolidays: number): number =>
+  Math.min(DAYS_PER_YEAR, Math.max(0, Math.round(annualHolidays)))
+
+const calcMonthlyStandardWorkingHours = (annualHolidays: number): number => {
+  const annualWorkingDays = Math.max(1, DAYS_PER_YEAR - clampAnnualHolidays(annualHolidays))
+  return (annualWorkingDays * LEGAL_WORKING_HOURS_PER_DAY) / 12
+}
+
+const deriveInitialBasicSalaryFromGross = ({
+  initialGrossSalary,
+  fixedOvertimeHours,
+  monthlyStandardWorkingHours,
+  overtimePremiumRate,
+  monthlyFixedAllowancesForOvertime
+}: {
+  initialGrossSalary: number
+  fixedOvertimeHours: number
+  monthlyStandardWorkingHours: number
+  overtimePremiumRate: number
+  monthlyFixedAllowancesForOvertime: number
+}): number => {
+  if (fixedOvertimeHours <= 0) {
+    return Math.max(0, initialGrossSalary)
+  }
+
+  const overtimeRatio = (overtimePremiumRate * fixedOvertimeHours) / Math.max(1, monthlyStandardWorkingHours)
+  return Math.max(
+    0,
+    (initialGrossSalary - monthlyFixedAllowancesForOvertime * overtimeRatio) / (1 + overtimeRatio)
+  )
+}
+
 export function calculatePrediction(
   { scenario, settings }: { scenario: Scenario; settings: GraphViewSettings },
   compiledTaxSchema: CompiledTaxSchemaV2
@@ -40,11 +76,10 @@ export function calculatePrediction(
   const schema = compiledTaxSchema.schema
   const details: AnnualSalaryDetail[] = []
 
-  let currentBasicSalary = scenario.initialBasicSalary
-  let previousYearTaxableIncomeForResidentTax = Math.max(
-    0,
-    scenario.deductions?.previousYearIncome ?? 0
-  )
+  const annualHolidays = clampAnnualHolidays(scenario.annualHolidays ?? DEFAULT_ANNUAL_HOLIDAYS)
+  const monthlyStandardWorkingHours = calcMonthlyStandardWorkingHours(annualHolidays)
+  const fixedOvertimePremiumRate = 1.25
+  const fixedHours = Math.max(0, scenario.overtime?.fixedOvertime?.hours ?? 0)
 
   const monthlyAllowancesForOvertime = (scenario.allowances ?? []).reduce((total, allowance) => {
     if (allowance.type === 'fixed') {
@@ -53,18 +88,32 @@ export function calculatePrediction(
     return total
   }, 0)
 
+  const initialGrossSalary = scenario.initialGrossSalary ?? scenario.initialBasicSalary ?? 0
+  const initialBasicSalary = deriveInitialBasicSalaryFromGross({
+    initialGrossSalary,
+    fixedOvertimeHours: fixedHours,
+    monthlyStandardWorkingHours,
+    overtimePremiumRate: fixedOvertimePremiumRate,
+    monthlyFixedAllowancesForOvertime: monthlyAllowancesForOvertime
+  })
+
+  let currentBasicSalary = initialBasicSalary
+  let previousYearTaxableIncomeForResidentTax = Math.max(
+    0,
+    scenario.deductions?.previousYearIncome ?? 0
+  )
+
   for (let year = 1; year <= settings.predictionPeriod; year += 1) {
     const isProbationApplied = year === 1 && Boolean(scenario.probation?.enabled)
     const probationMonths = isProbationApplied ? Math.min(12, scenario.probation?.durationMonths ?? 0) : 0
     const bonusMode = scenario.bonus?.mode ?? 'fixed'
     const bonusMonths = scenario.bonus?.months ?? 2
-    const fixedOvertimePremiumRate = 1.25
 
     let annualBasicSalary = 0
     if (isProbationApplied) {
       for (let month = 1; month <= 12; month += 1) {
         annualBasicSalary +=
-          month <= probationMonths ? (scenario.probation.basicSalary ?? 0) : (scenario.initialBasicSalary ?? 0)
+          month <= probationMonths ? (scenario.probation.basicSalary ?? 0) : initialBasicSalary
       }
     } else {
       annualBasicSalary = currentBasicSalary * 12
@@ -72,15 +121,12 @@ export function calculatePrediction(
 
     const monthlySalaryForOvertimeCalc = isProbationApplied
       ? ((scenario.probation.basicSalary ?? 0) * probationMonths +
-          (scenario.initialBasicSalary ?? 0) * (12 - probationMonths)) /
+          initialBasicSalary * (12 - probationMonths)) /
           12 +
         monthlyAllowancesForOvertime
       : currentBasicSalary + monthlyAllowancesForOvertime
 
-    const hourlyWage = monthlySalaryForOvertimeCalc / 160
-    const fixedHours = scenario.overtime?.fixedOvertime?.enabled
-      ? (scenario.overtime.fixedOvertime.hours ?? 0)
-      : 0
+    const hourlyWage = monthlySalaryForOvertimeCalc / Math.max(1, monthlyStandardWorkingHours)
 
     const overtimeHours = scenario.overtime?.variableOvertime?.enabled
       ? Math.max(0, settings.averageOvertimeHours - fixedHours)
@@ -93,16 +139,21 @@ export function calculatePrediction(
       if (isProbationApplied) {
         for (let month = 1; month <= 12; month += 1) {
           const monthlyBasicSalaryForFixedOvertime =
-            month <= probationMonths ? (scenario.probation.basicSalary ?? 0) : (scenario.initialBasicSalary ?? 0)
+            month <= probationMonths ? (scenario.probation.basicSalary ?? 0) : initialBasicSalary
           const monthlyBaseForFixedOvertime =
             monthlyBasicSalaryForFixedOvertime + monthlyAllowancesForOvertime
           rawAnnualFixedOvertime +=
-            (monthlyBaseForFixedOvertime / 160) * fixedOvertimePremiumRate * fixedHours
+            (monthlyBaseForFixedOvertime / Math.max(1, monthlyStandardWorkingHours)) *
+            fixedOvertimePremiumRate *
+            fixedHours
         }
       } else {
         const monthlyBaseForFixedOvertime = currentBasicSalary + monthlyAllowancesForOvertime
         rawAnnualFixedOvertime =
-          (monthlyBaseForFixedOvertime / 160) * fixedOvertimePremiumRate * fixedHours * 12
+          (monthlyBaseForFixedOvertime / Math.max(1, monthlyStandardWorkingHours)) *
+          fixedOvertimePremiumRate *
+          fixedHours *
+          12
       }
     }
 
@@ -152,7 +203,7 @@ export function calculatePrediction(
       year === 1 ? 'previousYearInput' : 'previousSimulationYearTaxableIncome'
 
     const growthMultiplier = 1 + (scenario.salaryGrowthRate ?? 0) / 100
-    const baseSalaryForGrowth = isProbationApplied ? scenario.initialBasicSalary : currentBasicSalary
+    const baseSalaryForGrowth = isProbationApplied ? initialBasicSalary : currentBasicSalary
 
     const runtimeVars: Record<string, unknown> = {
       rawAnnualBasicSalary: annualBasicSalary,
@@ -236,6 +287,7 @@ export function calculatePrediction(
       calculationTrace: {
         rules: {
           salaryGrowthRatePercent: scenario.salaryGrowthRate ?? 0,
+          annualHolidays,
           bonusMode,
           bonusMonths,
           averageOvertimeHours: settings.averageOvertimeHours,
@@ -252,6 +304,7 @@ export function calculatePrediction(
           probationMonths,
           monthlyBasicSalaryForBonus: annualBasicSalary / 12,
           monthlySalaryForOvertimeCalc,
+          monthlyStandardWorkingHours,
           hourlyWage,
           overtimeHours,
           monthlyGrossIncome,

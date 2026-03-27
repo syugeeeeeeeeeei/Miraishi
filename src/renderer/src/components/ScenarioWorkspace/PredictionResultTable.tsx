@@ -124,9 +124,9 @@ const CalculationFlowPanel = ({ detail }: { detail: DetailRow }): React.JSX.Elem
 
       <SectionCard
         title="1. 変動残業代の算出"
-        rule="時給ベースで、平均残業時間から固定残業時間を差し引いた対象時間のみを計上します。"
+        rule={`時給ベースで、平均残業時間から固定残業時間を差し引いた対象時間のみを計上します。（年間休日: ${formatNumber(calculationTrace.rules.annualHolidays)}日）`}
       >
-        <FormulaLine>{`時給 = 残業計算用月給 ÷ 160 = ${formatYen(calculationTrace.intermediate.monthlySalaryForOvertimeCalc)} ÷ 160 = ${formatYen(calculationTrace.intermediate.hourlyWage)}`}</FormulaLine>
+        <FormulaLine>{`時給 = 残業計算用月給 ÷ 所定労働時間（月） = ${formatYen(calculationTrace.intermediate.monthlySalaryForOvertimeCalc)} ÷ ${formatNumber(calculationTrace.intermediate.monthlyStandardWorkingHours, 2)} = ${formatYen(calculationTrace.intermediate.hourlyWage)}`}</FormulaLine>
         <FormulaLine>{`対象残業時間 = max(0, 平均残業時間 - 固定残業時間) = max(0, ${formatNumber(calculationTrace.rules.averageOvertimeHours)}h - ${formatNumber(calculationTrace.rules.fixedOvertimeHours)}h) = ${formatNumber(calculationTrace.intermediate.overtimeHours)}h`}</FormulaLine>
         <FormulaLine>{`年間変動残業代 = 時給 × ${formatNumber(calculationTrace.rules.overtimePremiumRate, 2)} × 対象残業時間 × 12 = ${formatYen(breakdown.income.annualVariableOvertime)}`}</FormulaLine>
       </SectionCard>
@@ -140,7 +140,7 @@ const CalculationFlowPanel = ({ detail }: { detail: DetailRow }): React.JSX.Elem
         } 固定残業代は基本給連動で算出し、ボーナスは${isBonusLinkedToBasic ? '基本給連動モード' : '固定額モード'}です。`}
       >
         {calculationTrace.rules.fixedOvertimeHours > 0 ? (
-          <FormulaLine>{`年間固定残業代 = （残業計算用月給 ÷ 160）× ${formatNumber(calculationTrace.rules.overtimePremiumRate, 2)} × ${formatNumber(calculationTrace.rules.fixedOvertimeHours)}h × 12 = ${formatYen(breakdown.income.annualFixedOvertime)}`}</FormulaLine>
+          <FormulaLine>{`年間固定残業代 = （残業計算用月給 ÷ 所定労働時間（月））× ${formatNumber(calculationTrace.rules.overtimePremiumRate, 2)} × ${formatNumber(calculationTrace.rules.fixedOvertimeHours)}h × 12 = ${formatYen(breakdown.income.annualFixedOvertime)}`}</FormulaLine>
         ) : (
           <FormulaLine>{`年間固定残業代 = 0（固定残業時間: ${formatNumber(calculationTrace.rules.fixedOvertimeHours)}h）`}</FormulaLine>
         )}

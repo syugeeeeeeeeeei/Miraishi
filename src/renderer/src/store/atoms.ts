@@ -31,7 +31,9 @@ export const createScenarioAtom = atom(null, async (_get, set) => {
   try {
     const newScenarioData: Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'> = {
       title: '新しいシナリオ',
+      initialGrossSalary: 300000,
       initialBasicSalary: 300000,
+      annualHolidays: 120,
       allowances: [],
       overtime: {
         fixedOvertime: { enabled: false, hours: 0 },

@@ -94,11 +94,82 @@ const taxProfileSchema = z
   })
   .strict()
 
+const DEFAULT_ANNUAL_HOLIDAYS = 120
+const DAYS_PER_YEAR = 365
+const LEGAL_WORKING_HOURS_PER_DAY = 8
+const FIXED_OVERTIME_PREMIUM_RATE = 1.25
+
+const clampAnnualHolidays = (annualHolidays: number): number =>
+  Math.min(DAYS_PER_YEAR, Math.max(0, Math.round(annualHolidays)))
+
+const calcMonthlyStandardWorkingHours = (annualHolidays: number): number => {
+  const annualWorkingDays = Math.max(1, DAYS_PER_YEAR - clampAnnualHolidays(annualHolidays))
+  return (annualWorkingDays * LEGAL_WORKING_HOURS_PER_DAY) / 12
+}
+
+const calcMonthlyFixedAllowancesForOvertime = (
+  allowances: { type: 'fixed' | 'percentage'; amount: number }[]
+): number =>
+  allowances.reduce((sum, allowance) => {
+    if (allowance.type !== 'fixed') {
+      return sum
+    }
+    return sum + allowance.amount
+  }, 0)
+
+const deriveInitialBasicSalary = ({
+  monthlyGrossSalary,
+  fixedOvertimeHours,
+  monthlyStandardWorkingHours,
+  monthlyFixedAllowancesForOvertime
+}: {
+  monthlyGrossSalary: number
+  fixedOvertimeHours: number
+  monthlyStandardWorkingHours: number
+  monthlyFixedAllowancesForOvertime: number
+}): number => {
+  if (fixedOvertimeHours <= 0) {
+    return Math.max(0, monthlyGrossSalary)
+  }
+
+  const overtimeRatio =
+    (FIXED_OVERTIME_PREMIUM_RATE * fixedOvertimeHours) / Math.max(1, monthlyStandardWorkingHours)
+  return Math.max(
+    0,
+    (monthlyGrossSalary - monthlyFixedAllowancesForOvertime * overtimeRatio) / (1 + overtimeRatio)
+  )
+}
+
+const deriveInitialGrossSalary = ({
+  monthlyBasicSalary,
+  fixedOvertimeHours,
+  monthlyStandardWorkingHours,
+  monthlyFixedAllowancesForOvertime
+}: {
+  monthlyBasicSalary: number
+  fixedOvertimeHours: number
+  monthlyStandardWorkingHours: number
+  monthlyFixedAllowancesForOvertime: number
+}): number => {
+  if (fixedOvertimeHours <= 0) {
+    return Math.max(0, monthlyBasicSalary)
+  }
+
+  const monthlyBaseForOvertime = Math.max(0, monthlyBasicSalary) + monthlyFixedAllowancesForOvertime
+  const monthlyFixedOvertime =
+    (monthlyBaseForOvertime / Math.max(1, monthlyStandardWorkingHours)) *
+    FIXED_OVERTIME_PREMIUM_RATE *
+    fixedOvertimeHours
+  return Math.max(0, monthlyBasicSalary) + monthlyFixedOvertime
+}
+
 export const scenarioSchema = z
   .object({
     id: z.string().uuid(),
     title: z.string().min(1, 'シナリオ名は必須です'),
+    initialGrossSalary: z.number().min(0).optional(),
     initialBasicSalary: z.number().min(0),
+    annualHolidays: z.number().int().min(0).max(365).optional().default(DEFAULT_ANNUAL_HOLIDAYS),
     allowances: z.array(allowanceSchema),
     overtime: overtimeSchema,
     annualBonus: z.number().min(0),
@@ -113,6 +184,44 @@ export const scenarioSchema = z
     updatedAt: z.coerce.date()
   })
   .strict()
+  .transform((scenario) => {
+    const annualHolidays = clampAnnualHolidays(scenario.annualHolidays ?? DEFAULT_ANNUAL_HOLIDAYS)
+    const fixedOvertimeHours = Math.max(0, scenario.overtime?.fixedOvertime?.hours ?? 0)
+    const monthlyStandardWorkingHours = calcMonthlyStandardWorkingHours(annualHolidays)
+    const monthlyFixedAllowancesForOvertime = calcMonthlyFixedAllowancesForOvertime(scenario.allowances)
+
+    const initialGrossSalary =
+      typeof scenario.initialGrossSalary === 'number'
+        ? Math.max(0, scenario.initialGrossSalary)
+        : deriveInitialGrossSalary({
+            monthlyBasicSalary: scenario.initialBasicSalary,
+            fixedOvertimeHours,
+            monthlyStandardWorkingHours,
+            monthlyFixedAllowancesForOvertime
+          })
+
+    const derivedInitialBasicSalary = deriveInitialBasicSalary({
+      monthlyGrossSalary: initialGrossSalary,
+      fixedOvertimeHours,
+      monthlyStandardWorkingHours,
+      monthlyFixedAllowancesForOvertime
+    })
+
+    return {
+      ...scenario,
+      initialGrossSalary,
+      initialBasicSalary: derivedInitialBasicSalary,
+      annualHolidays,
+      overtime: {
+        ...scenario.overtime,
+        fixedOvertime: {
+          ...scenario.overtime.fixedOvertime,
+          enabled: fixedOvertimeHours > 0,
+          hours: fixedOvertimeHours
+        }
+      }
+    }
+  })
 
 export const scenariosSchema = z.array(scenarioSchema)
 

@@ -67,7 +67,9 @@ export type TaxProfile = {
 export type Scenario = {
   id: string
   title: string
+  initialGrossSalary: number
   initialBasicSalary: number
+  annualHolidays: number
   allowances: Allowance[]
   overtime: Overtime
   annualBonus: number
@@ -294,6 +296,7 @@ export interface AnnualSalaryDetail {
   calculationTrace: {
     rules: {
       salaryGrowthRatePercent: number
+      annualHolidays: number
       bonusMode: 'fixed' | 'basicSalaryMonths'
       bonusMonths: number
       averageOvertimeHours: number
@@ -310,6 +313,7 @@ export interface AnnualSalaryDetail {
       probationMonths: number
       monthlyBasicSalaryForBonus: number
       monthlySalaryForOvertimeCalc: number
+      monthlyStandardWorkingHours: number
       hourlyWage: number
       overtimeHours: number
       monthlyGrossIncome: number

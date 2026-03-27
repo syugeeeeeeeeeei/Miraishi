@@ -29,7 +29,9 @@ const defaultSettings: GraphViewSettings = {
 
 // テスト用の基本シナリオ
 const baseScenario: Omit<Scenario, 'id' | 'createdAt' | 'updatedAt' | 'title'> = {
+  initialGrossSalary: 300000,
   initialBasicSalary: 300000,
+  annualHolidays: 120,
   annualBonus: 600000,
   salaryGrowthRate: 2,
   allowances: [],
@@ -210,12 +212,10 @@ describe('calculatePrediction', () => {
 
     const result = calculatePrediction({ scenario, settings: defaultSettings }, compiledDummyTaxSchema)
 
-    // 1年目: (30万 ÷ 160) × 1.25 × 20 × 12 = 562,500
-    expect(result.details[0].breakdown.income.annualFixedOvertime).toBeCloseTo(562500, 0)
-    // 2年目: (30.6万 ÷ 160) × 1.25 × 20 × 12 = 573,750
-    expect(result.details[1].breakdown.income.annualFixedOvertime).toBeCloseTo(573750, 0)
-    // 3年目: (31.212万 ÷ 160) × 1.25 × 20 × 12 = 585,225
-    expect(result.details[2].breakdown.income.annualFixedOvertime).toBeCloseTo(585225, 0)
+    // 初任給は固定残業代込みで入力し、年間休日から算出した所定労働時間で固定残業代を分解する
+    expect(result.details[0].breakdown.income.annualFixedOvertime).toBeCloseTo(477876, 0)
+    expect(result.details[1].breakdown.income.annualFixedOvertime).toBeCloseTo(487434, 0)
+    expect(result.details[2].breakdown.income.annualFixedOvertime).toBeCloseTo(497182, 0)
   })
 
   it('住民税が前年ベースで計算され、1年目は前年度収入入力値が使われること', () => {

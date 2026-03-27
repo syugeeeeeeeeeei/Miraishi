@@ -92,6 +92,30 @@ export const ScenarioInputForm = ({
   const bonusMode = scenario.bonus?.mode ?? 'fixed'
   const bonusMonths = scenario.bonus?.months ?? 2
   const isBonusLinkedToBasic = bonusMode === 'basicSalaryMonths'
+  const annualHolidays = Math.min(365, Math.max(0, Math.round(scenario.annualHolidays ?? 120)))
+  const annualWorkingDays = Math.max(1, 365 - annualHolidays)
+  const monthlyStandardWorkingHours = (annualWorkingDays * 8) / 12
+  const fixedOvertimeHours = Math.max(0, scenario.overtime?.fixedOvertime?.hours ?? 0)
+  const monthlyFixedAllowancesForOvertime = (scenario.allowances ?? []).reduce((sum, allowance) => {
+    if (allowance.type !== 'fixed') {
+      return sum
+    }
+    return sum + allowance.amount
+  }, 0)
+  const initialGrossSalary = Math.max(0, scenario.initialGrossSalary ?? scenario.initialBasicSalary ?? 0)
+  const overtimeRatio =
+    fixedOvertimeHours > 0 ? (1.25 * fixedOvertimeHours) / Math.max(1, monthlyStandardWorkingHours) : 0
+  const derivedInitialBasicSalary = Math.max(
+    0,
+    (initialGrossSalary - monthlyFixedAllowancesForOvertime * overtimeRatio) / (1 + overtimeRatio)
+  )
+  const derivedMonthlyFixedOvertime =
+    fixedOvertimeHours > 0
+      ? ((derivedInitialBasicSalary + monthlyFixedAllowancesForOvertime) /
+          Math.max(1, monthlyStandardWorkingHours)) *
+        1.25 *
+        fixedOvertimeHours
+      : 0
 
   return (
     <Box h="100%" w="100%" overflowY="auto" p={{ base: 3, md: 4 }}>
@@ -103,15 +127,18 @@ export const ScenarioInputForm = ({
           </Heading>
           <SimpleGrid columns={{ base: 1, md: 2, '2xl': 3 }} spacing={3}>
             <FormControl>
-              <FormLabel fontSize={LABEL_FONT_SIZE}>初任基本給 (月額)</FormLabel>
+              <FormLabel fontSize={LABEL_FONT_SIZE}>初任給（固定残業代込み / 月額）</FormLabel>
               <YenNumberInput
-                value={scenario.initialBasicSalary ?? 0}
+                value={scenario.initialGrossSalary ?? scenario.initialBasicSalary ?? 0}
                 onChange={(_, valueAsNumber): void =>
-                  updateNestedState('initialBasicSalary', isNaN(valueAsNumber) ? 0 : valueAsNumber)
+                  updateNestedState('initialGrossSalary', isNaN(valueAsNumber) ? 0 : valueAsNumber)
                 }
                 placeholder="例: 300000"
                 handleKeyDown={handleKeyDown}
               />
+              <Text mt={1} fontSize="xs" color="gray.600">
+                固定残業時間と年間休日数から、基本給と固定残業代を自動算出します。
+              </Text>
             </FormControl>
 
             <FormControl>
@@ -268,49 +295,52 @@ export const ScenarioInputForm = ({
 
             {/* 固定残業代 */}
             <VStack spacing={3} align="stretch" {...sectionCardProps}>
-              <Heading size="md">固定残業代</Heading>
-              <FormControl display="flex" alignItems="center" justifyContent="space-between">
-                <FormLabel
-                  htmlFor={`fixed-overtime-${scenario.id}`}
-                  mb="0"
-                  fontSize={LABEL_FONT_SIZE}
-                  fontWeight="medium"
-                >
-                  固定残業代制度
-                </FormLabel>
-                <Switch
-                  id={`fixed-overtime-${scenario.id}`}
-                  size="lg"
-                  isChecked={scenario.overtime?.fixedOvertime?.enabled ?? false}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>): void =>
-                    updateNestedState('overtime.fixedOvertime.enabled', e.target.checked)
-                  }
-                />
-              </FormControl>
+              <Heading size="md">固定残業・労働条件</Heading>
+              <SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+                <FormControl>
+                  <FormLabel fontSize={LABEL_FONT_SIZE}>固定残業時間 (h)</FormLabel>
+                  <NumberInput
+                    size={CONTROL_SIZE}
+                    value={scenario.overtime?.fixedOvertime?.hours ?? 0}
+                    onChange={(_, valueAsNumber): void =>
+                      updateNestedState(
+                        'overtime.fixedOvertime.hours',
+                        isNaN(valueAsNumber) ? 0 : valueAsNumber
+                      )
+                    }
+                    min={0}
+                  >
+                    <NumberInputField onKeyDown={handleKeyDown} bg="white" inputMode="numeric" />
+                  </NumberInput>
+                </FormControl>
 
-              {scenario.overtime?.fixedOvertime?.enabled && (
-                <VStack align="stretch" spacing={2}>
-                  <FormControl maxW={{ base: '100%', md: '260px' }}>
-                    <FormLabel fontSize={LABEL_FONT_SIZE}>みなし時間 (h)</FormLabel>
-                    <NumberInput
-                      size={CONTROL_SIZE}
-                      value={scenario.overtime?.fixedOvertime?.hours ?? 0}
-                      onChange={(_, valueAsNumber): void =>
-                        updateNestedState(
-                          'overtime.fixedOvertime.hours',
-                          isNaN(valueAsNumber) ? 0 : valueAsNumber
-                        )
-                      }
-                      min={0}
-                    >
-                      <NumberInputField onKeyDown={handleKeyDown} bg="white" inputMode="numeric" />
-                    </NumberInput>
-                  </FormControl>
-                  <Text fontSize="sm" color="gray.600">
-                    固定残業代（月額）は毎年自動計算されます: （残業計算用月給 ÷ 160）× 1.25 × みなし時間
-                  </Text>
-                </VStack>
-              )}
+                <FormControl>
+                  <FormLabel fontSize={LABEL_FONT_SIZE}>年間休日数 (日)</FormLabel>
+                  <NumberInput
+                    size={CONTROL_SIZE}
+                    value={scenario.annualHolidays ?? 120}
+                    onChange={(_, valueAsNumber): void =>
+                      updateNestedState('annualHolidays', isNaN(valueAsNumber) ? 0 : valueAsNumber)
+                    }
+                    min={0}
+                    max={365}
+                  >
+                    <NumberInputField onKeyDown={handleKeyDown} bg="white" inputMode="numeric" />
+                  </NumberInput>
+                </FormControl>
+              </SimpleGrid>
+              <VStack align="stretch" spacing={1}>
+                <Text fontSize="sm" color="gray.600">
+                  所定労働時間（月）= (365 - 年間休日数) × 8 ÷ 12 ={' '}
+                  {monthlyStandardWorkingHours.toLocaleString('ja-JP', { maximumFractionDigits: 2 })}h
+                </Text>
+                <Text fontSize="sm" color="gray.600">
+                  算出基本給（月額）: {Math.round(derivedInitialBasicSalary).toLocaleString('ja-JP')} 円
+                </Text>
+                <Text fontSize="sm" color="gray.600">
+                  算出固定残業代（月額）: {Math.round(derivedMonthlyFixedOvertime).toLocaleString('ja-JP')} 円
+                </Text>
+              </VStack>
             </VStack>
 
             {/* 扶養・控除 */}
