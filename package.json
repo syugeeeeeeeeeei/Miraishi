@@ -1,6 +1,6 @@
 {
   "name": "miraishi",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "description": "An Electron application with React and TypeScript",
   "main": "./out/main/index.js",
   "repository": {
@@ -18,7 +18,7 @@
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "deploy:unpack": "npm run build && electron-builder --dir",
-    "deploy:win": "npm run build && dotenv -- electron-builder --win",
+    "deploy:win": "npm run build && dotenv -- electron-builder --win  --publish always",
     "deploy:win:nsis": "npm run build && dotenv -- electron-builder --win --publish always",
     "test": "vitest"
   },
