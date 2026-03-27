@@ -232,39 +232,6 @@ export function ControlPanel(): React.JSX.Element {
     throw new Error('税金ルール取得APIが見つかりません。アプリ再起動後に再試行してください。')
   }
 
-  const updateTaxSchemaFromApi = async (
-    nextTaxSchema: TaxSchema
-  ): Promise<{ success: boolean; taxSchema?: TaxSchema; error?: string }> => {
-    const apiWithOptional = window.api as typeof window.api & {
-      updateTaxSchema?: (
-        schema: TaxSchema
-      ) => Promise<{ success: boolean; taxSchema?: TaxSchema; error?: string }>
-    }
-    if (typeof apiWithOptional.updateTaxSchema === 'function') {
-      try {
-        return await apiWithOptional.updateTaxSchema(nextTaxSchema)
-      } catch (error) {
-        if (!isNoHandlerRegisteredError(error, 'update-tax-schema')) {
-          throw error
-        }
-      }
-    }
-
-    const fallbackInvoke = (window as any)?.electron?.ipcRenderer?.invoke
-    if (typeof fallbackInvoke === 'function') {
-      try {
-        return await fallbackInvoke('update-tax-schema', nextTaxSchema)
-      } catch (error) {
-        if (isNoHandlerRegisteredError(error, 'update-tax-schema')) {
-          return fallbackInvoke('updateTaxSchema', nextTaxSchema)
-        }
-        throw error
-      }
-    }
-
-    throw new Error('税金ルール更新APIが見つかりません。アプリ再起動後に再試行してください。')
-  }
-
   const openTaxRuleDialog = async (): Promise<void> => {
     setIsTaxSchemaLoading(true)
     try {
@@ -313,57 +280,12 @@ export function ControlPanel(): React.JSX.Element {
     setIsTaxRuleDialogOpen(false)
   }
 
-  const handleTaxRuleConfirm = async (nextTaxSchema: TaxSchema): Promise<void> => {
+  const handleTaxRuleApplied = async (nextTaxSchema: TaxSchema): Promise<void> => {
     setTaxSchemaForDialog(nextTaxSchema)
     setTaxSchemaOverride(nextTaxSchema)
     saveTaxSchemaToLocalStorage(nextTaxSchema)
     await calculatePredictions()
-
-    try {
-      const result = await updateTaxSchemaFromApi(nextTaxSchema)
-      if (!result.success || !result.taxSchema) {
-        throw new Error(result.error ?? '税金ルールの更新に失敗しました。')
-      }
-
-      saveTaxSchemaToLocalStorage(result.taxSchema)
-      setTaxSchemaForDialog(result.taxSchema)
-      setTaxSchemaOverride(result.taxSchema)
-      setIsTaxRuleDialogOpen(false)
-
-      toast({
-        title: '税金ルールを更新しました。',
-        description: '新しいルールを保存し、全シナリオを再計算しました。',
-        status: 'success',
-        duration: 2000,
-        isClosable: true,
-        position: 'bottom-right'
-      })
-    } catch (error) {
-      if (
-        isNoHandlerRegisteredError(error, 'update-tax-schema') ||
-        isNoHandlerRegisteredError(error, 'updateTaxSchema')
-      ) {
-        setIsTaxRuleDialogOpen(false)
-        toast({
-          title: '税金ルールを保存しました（ローカルモード）。',
-          description: '保存API未登録のため、アプリ内ローカル保存で再計算を完了しました。',
-          status: 'success',
-          duration: 2600,
-          isClosable: true,
-          position: 'bottom-right'
-        })
-        return
-      }
-
-      toast({
-        title: '税金ルールの更新に失敗しました。',
-        description: error instanceof Error ? error.message : 'Unknown error',
-        status: 'error',
-        duration: 2500,
-        isClosable: true,
-        position: 'bottom-right'
-      })
-    }
+    setIsTaxRuleDialogOpen(false)
   }
 
   const showInfoPlaceholder = (): void => {
@@ -489,7 +411,7 @@ export function ControlPanel(): React.JSX.Element {
         isLoading={isTaxSchemaLoading}
         initialTaxSchema={taxSchemaForDialog}
         onCloseWithoutChanges={closeTaxRuleDialogWithoutChanges}
-        onConfirm={handleTaxRuleConfirm}
+        onApplied={handleTaxRuleApplied}
       />
     </>
   )

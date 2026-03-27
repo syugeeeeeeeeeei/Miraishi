@@ -172,6 +172,7 @@ const CalculationFlowPanel = ({ detail }: { detail: DetailRow }): React.JSX.Elem
         <FormulaLine>{`= ${formatYen(calculationTrace.deductionRules.basicDeduction)} + ${formatYen(spouseDeductionAppliedAmount)} + ${formatYen(dependentDeductionTotal)} + ${formatYen(calculationTrace.deductionRules.otherDeductionsTotal)} + ${formatYen(socialInsuranceTotal)} = ${formatYen(calculationTrace.intermediate.totalIncomeDeductions)}`}</FormulaLine>
         <FormulaLine>{`課税所得 = max(0, 額面年収 - 所得控除合計) = max(0, ${formatYen(grossAnnualIncome)} - ${formatYen(calculationTrace.intermediate.totalIncomeDeductions)}) = ${formatYen(calculationTrace.intermediate.taxableIncome)}`}</FormulaLine>
         <FormulaLine>{`所得税（税率帯: ${incomeTaxBracketLabel}）= max(0, 課税所得 × ${formatRateFromRatio(calculationTrace.incomeTaxRule.rate)} - ${formatYen(calculationTrace.incomeTaxRule.deduction)}) = ${formatYen(breakdown.deductions.incomeTax)}`}</FormulaLine>
+        <FormulaLine>{`復興特別所得税 = 所得税 × ${formatRateFromRatio(calculationTrace.rules.reconstructionSpecialIncomeTaxRate)} = ${formatYen(breakdown.deductions.incomeTax)} × ${formatRateFromRatio(calculationTrace.rules.reconstructionSpecialIncomeTaxRate)} = ${formatYen(breakdown.deductions.reconstructionSpecialIncomeTax)}`}</FormulaLine>
         <FormulaLine>{`住民税 = 住民税計算ベース × ${formatRateFromRatio(calculationTrace.rules.residentTaxRate)} = ${formatYen(calculationTrace.intermediate.residentTaxBaseIncome)} × ${formatRateFromRatio(calculationTrace.rules.residentTaxRate)} = ${formatYen(breakdown.deductions.residentTax)}（基準: ${residentTaxBaseSourceLabel}）`}</FormulaLine>
       </SectionCard>
 
@@ -179,7 +180,7 @@ const CalculationFlowPanel = ({ detail }: { detail: DetailRow }): React.JSX.Elem
         title="5. 手取り年収の算出"
         rule="社会保険料と税額の合計を差し引いて、手取り年収を算出します。"
       >
-        <FormulaLine>{`控除合計 = 社会保険料合計 + 所得税 + 住民税 = ${formatYen(socialInsuranceTotal)} + ${formatYen(breakdown.deductions.incomeTax)} + ${formatYen(breakdown.deductions.residentTax)} = ${formatYen(totalDeductions)}`}</FormulaLine>
+        <FormulaLine>{`控除合計 = 社会保険料合計 + 所得税 + 復興特別所得税 + 住民税 = ${formatYen(socialInsuranceTotal)} + ${formatYen(breakdown.deductions.incomeTax)} + ${formatYen(breakdown.deductions.reconstructionSpecialIncomeTax)} + ${formatYen(breakdown.deductions.residentTax)} = ${formatYen(totalDeductions)}`}</FormulaLine>
         <FormulaLine>{`手取り年収 = 額面年収 - 控除合計 = ${formatYen(grossAnnualIncome)} - ${formatYen(totalDeductions)} = ${formatYen(netAnnualIncome)}`}</FormulaLine>
         <FormulaLine>{`平均月収（手取り）= 手取り年収 ÷ 12 = ${formatYen(netAnnualIncome)} ÷ 12 = ${formatYen(monthlyNetIncome)}`}</FormulaLine>
       </SectionCard>
@@ -274,6 +275,12 @@ const BreakdownPanel: React.FC<{ detail: DetailRow }> = ({ detail }) => (
           <Text fontSize="sm">所得税:</Text>
           <Text fontSize="sm" fontWeight="medium">
             {formatYen(detail.breakdown.deductions.incomeTax)}
+          </Text>
+        </HStack>
+        <HStack justifyContent="space-between">
+          <Text fontSize="sm">復興特別所得税:</Text>
+          <Text fontSize="sm" fontWeight="medium">
+            {formatYen(detail.breakdown.deductions.reconstructionSpecialIncomeTax)}
           </Text>
         </HStack>
         <HStack justifyContent="space-between">

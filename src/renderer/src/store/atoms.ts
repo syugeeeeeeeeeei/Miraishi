@@ -4,6 +4,7 @@
  */
 import { atom } from 'jotai'
 import type { GraphViewSettings, PredictionResult, Scenario, TaxSchema } from '@myTypes/miraishi'
+import { DEFAULT_INDUSTRY_CODE, DEFAULT_PREFECTURE_CODE } from '../../../shared/taxSchemaDefaults'
 
 // --- データ関連のAtom ---
 
@@ -51,6 +52,10 @@ export const createScenarioAtom = atom(null, async (_get, set) => {
         dependents: { hasSpouse: false, numberOfDependents: 0 },
         otherDeductions: [],
         previousYearIncome: 0
+      },
+      taxProfile: {
+        prefectureCode: DEFAULT_PREFECTURE_CODE,
+        industryCode: DEFAULT_INDUSTRY_CODE
       }
     }
     const result = await window.api.createScenario(newScenarioData)

@@ -1,12 +1,10 @@
 import {
+  Badge,
   Box,
   Button,
   Divider,
-  FormControl,
-  FormLabel,
   HStack,
-  IconButton,
-  Input,
+  ListItem,
   Modal,
   ModalBody,
   ModalCloseButton,
@@ -14,95 +12,37 @@ import {
   ModalFooter,
   ModalHeader,
   ModalOverlay,
-  NumberInput,
-  NumberInputField,
   Spinner,
-  Switch,
   Tab,
   TabList,
   TabPanel,
   TabPanels,
   Tabs,
   Text,
-  VStack
+  UnorderedList,
+  VStack,
+  useToast
 } from '@chakra-ui/react'
 import { yaml as yamlLanguage } from '@codemirror/lang-yaml'
 import { EditorView } from '@codemirror/view'
-import type { TaxSchema } from '@myTypes/miraishi'
+import type { SchemaValidationReport, TaxSchema } from '@myTypes/miraishi'
 import CodeMirror from '@uiw/react-codemirror'
-import React, { useEffect, useState } from 'react'
-import { FaPlus, FaTrash } from 'react-icons/fa'
-import { parseDocument } from 'yaml'
+import React, { useEffect, useMemo, useState } from 'react'
+import { stringify } from 'yaml'
 
 interface TaxRuleDialogProps {
   isOpen: boolean
   isLoading: boolean
   initialTaxSchema: TaxSchema | null
   onCloseWithoutChanges: () => void
-  onConfirm: (nextTaxSchema: TaxSchema) => Promise<void>
+  onApplied: (nextTaxSchema: TaxSchema) => Promise<void>
 }
-
-const isFiniteNumber = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value)
-
-const isTaxSchemaObject = (value: unknown): value is TaxSchema => {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const schema = value as TaxSchema
-
-  if (typeof schema.version !== 'string') {
-    return false
-  }
-
-  if (!Array.isArray(schema.incomeTaxRates) || schema.incomeTaxRates.length === 0) {
-    return false
-  }
-  const areIncomeTaxRatesValid = schema.incomeTaxRates.every((rate) => {
-    const isThresholdValid = rate.threshold === null || isFiniteNumber(rate.threshold)
-    return isThresholdValid && isFiniteNumber(rate.rate) && isFiniteNumber(rate.deduction)
-  })
-  if (!areIncomeTaxRatesValid) {
-    return false
-  }
-
-  if (!isFiniteNumber(schema.residentTaxRate)) {
-    return false
-  }
-
-  if (
-    !schema.socialInsurance ||
-    !isFiniteNumber(schema.socialInsurance.healthInsurance.rate) ||
-    !isFiniteNumber(schema.socialInsurance.healthInsurance.maxStandardRemuneration) ||
-    !isFiniteNumber(schema.socialInsurance.pension.rate) ||
-    !isFiniteNumber(schema.socialInsurance.pension.maxStandardRemuneration) ||
-    !isFiniteNumber(schema.socialInsurance.employmentInsurance.rate)
-  ) {
-    return false
-  }
-
-  if (
-    !schema.deductions ||
-    !isFiniteNumber(schema.deductions.basic) ||
-    !isFiniteNumber(schema.deductions.spouse) ||
-    !isFiniteNumber(schema.deductions.dependent)
-  ) {
-    return false
-  }
-
-  return true
-}
-
-const toDraftCopy = (schema: TaxSchema): TaxSchema => JSON.parse(JSON.stringify(schema))
-
-const quoteYamlString = (value: string): string => `'${value.replace(/'/g, "''")}'`
 
 const YAML_EDITOR_FONT_FAMILY =
   "var(--chakra-fonts-body), 'Yu Gothic UI', 'Meiryo', 'Hiragino Kaku Gothic ProN', sans-serif"
 
 const yamlEditorExtensions = [
   yamlLanguage(),
-  // highlightWhitespace(),
   EditorView.lineWrapping,
   EditorView.contentAttributes.of({
     spellcheck: 'false',
@@ -129,13 +69,13 @@ const yamlEditorTheme = EditorView.theme({
   },
   '.cm-line': {
     paddingLeft: '6px',
-    paddingRight: '12px',
+    paddingRight: '12px'
   },
   '.cm-gutters': {
     backgroundColor: '#f4f7fb',
     color: '#64748b',
     borderRight: '1px solid #d9e2ec',
-    fontSize: '14px',
+    fontSize: '14px'
   },
   '.cm-activeLineGutter': {
     backgroundColor: '#eaf2ff',
@@ -152,97 +92,36 @@ const yamlEditorTheme = EditorView.theme({
   },
   '.cm-cursor, .cm-dropCursor': {
     borderLeftColor: '#0284c7'
-  },
-  '.cm-foldPlaceholder': {
-    backgroundColor: '#e8edf5',
-    border: '1px solid #cbd5e1',
-    color: '#475569'
-  },
-  '.cm-comment': {
-    color: '#64748b'
-  },
-  '.cm-string': {
-    color: '#0f766e'
-  },
-  '.cm-number': {
-    color: '#7c3aed'
-  },
-  '.cm-propertyName': {
-    color: '#0b4f92',
-    fontWeight: '600'
   }
 })
 
-const toTaxSchemaYamlText = (schema: TaxSchema): string => {
-  const lines: string[] = [
-    '# =============================',
-    '# 税金ルール設定 (YAML)',
-    '# 税率は 0.1 = 10% の小数で指定します。',
-    '# =============================',
-    '',
-    '# バージョン',
-    `version: ${quoteYamlString(schema.version)}`,
-    '',
-    '# 所得税率テーブル（課税所得の帯）',
-    'incomeTaxRates:',
-    '  # threshold は課税所得の上限です。null は上限なし（最終帯）を表します。'
-  ]
-
-  for (const [index, rate] of schema.incomeTaxRates.entries()) {
-    lines.push(`  # ${index + 1}段目`)
-    lines.push(`  - threshold: ${rate.threshold === null ? 'null' : rate.threshold}`)
-    lines.push(`    rate: ${rate.rate}`)
-    lines.push(`    deduction: ${rate.deduction}`)
-    if (index < schema.incomeTaxRates.length - 1) {
-      lines.push('')
-    }
-  }
-
-  lines.push('')
-  lines.push('# 住民税率')
-  lines.push('residentTaxRate: ' + schema.residentTaxRate)
-  lines.push('')
-  lines.push('# 社会保険')
-  lines.push('socialInsurance:')
-  lines.push('  # maxStandardRemuneration は標準報酬月額の上限値です。')
-  lines.push('  healthInsurance:')
-  lines.push(`    rate: ${schema.socialInsurance.healthInsurance.rate}`)
-  lines.push(
-    `    maxStandardRemuneration: ${schema.socialInsurance.healthInsurance.maxStandardRemuneration}`
-  )
-  lines.push('  pension:')
-  lines.push(`    rate: ${schema.socialInsurance.pension.rate}`)
-  lines.push(`    maxStandardRemuneration: ${schema.socialInsurance.pension.maxStandardRemuneration}`)
-  lines.push('  employmentInsurance:')
-  lines.push(`    rate: ${schema.socialInsurance.employmentInsurance.rate}`)
-  lines.push('')
-  lines.push('# 所得控除額（年間）')
-  lines.push('deductions:')
-  lines.push(`  basic: ${schema.deductions.basic}`)
-  lines.push(`  spouse: ${schema.deductions.spouse}`)
-  lines.push(`  dependent: ${schema.deductions.dependent}`)
-
-  return `${lines.join('\n')}\n`
+const stringifySchema = (schema: TaxSchema): string => {
+  return stringify(schema, {
+    indent: 2,
+    lineWidth: 0
+  })
 }
 
-const parseTaxSchemaFromText = (
-  yamlText: string
-): { schema: TaxSchema | null; error: string | null } => {
-  const document = parseDocument(yamlText)
-  if (document.errors.length > 0) {
-    const firstError = document.errors[0]
-    return { schema: null, error: `YAMLの構文エラーがあります。${firstError.message}` }
-  }
+const classifyErrors = (errors: string[]): {
+  syntax: string[]
+  structure: string[]
+  semantic: string[]
+} => {
+  const syntax: string[] = []
+  const structure: string[] = []
+  const semantic: string[] = []
 
-  const parsed = document.toJS()
-  if (!isTaxSchemaObject(parsed)) {
-    return {
-      schema: null,
-      error: '税金ルールYAMLの形式が不正です。必須フィールドと数値型を確認してください。'
+  errors.forEach((error) => {
+    if (error.includes('YAML構文エラー')) {
+      syntax.push(error)
+    } else if (error.includes('Invalid') || error.includes('required') || error.includes('expected')) {
+      structure.push(error)
+    } else {
+      semantic.push(error)
     }
-  }
+  })
 
-  return { schema: parsed, error: null }
+  return { syntax, structure, semantic }
 }
 
 export function TaxRuleDialog({
@@ -250,67 +129,143 @@ export function TaxRuleDialog({
   isLoading,
   initialTaxSchema,
   onCloseWithoutChanges,
-  onConfirm
+  onApplied
 }: TaxRuleDialogProps): React.JSX.Element {
-  const [draftTaxSchema, setDraftTaxSchema] = useState<TaxSchema | null>(null)
+  const toast = useToast()
   const [editorText, setEditorText] = useState<string>('')
-  const [editorError, setEditorError] = useState<string | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState<boolean>(false)
+  const [report, setReport] = useState<SchemaValidationReport | null>(null)
+  const [isPreviewing, setIsPreviewing] = useState<boolean>(false)
+  const [isApplying, setIsApplying] = useState<boolean>(false)
+  const [history, setHistory] = useState<{ id: string; lawVersion: string; createdAt: string; note: string }[]>(
+    []
+  )
+  const [activeSnapshotId, setActiveSnapshotId] = useState<string | null>(null)
+
+  const parsedErrors = useMemo(() => classifyErrors(report?.errors ?? []), [report])
+
+  const loadHistory = async (): Promise<void> => {
+    const result = await window.api.listTaxSchemaHistory()
+    if (!result.success || !result.snapshots) {
+      return
+    }
+    setActiveSnapshotId(result.activeSnapshotId ?? null)
+    setHistory(
+      result.snapshots
+        .slice()
+        .reverse()
+        .map((snapshot) => ({
+          id: snapshot.id,
+          lawVersion: snapshot.lawVersion,
+          createdAt: snapshot.createdAt,
+          note: snapshot.note
+        }))
+    )
+  }
 
   useEffect((): void => {
     if (!isOpen || !initialTaxSchema) {
       return
     }
-    const nextDraft = toDraftCopy(initialTaxSchema)
-    setDraftTaxSchema(nextDraft)
-    setEditorText(toTaxSchemaYamlText(nextDraft))
-    setEditorError(null)
+    setEditorText(stringifySchema(initialTaxSchema))
+    setReport(null)
+    void loadHistory()
   }, [isOpen, initialTaxSchema])
 
-  const updateDraft = (updater: (prev: TaxSchema) => TaxSchema): void => {
-    setDraftTaxSchema((prev) => {
-      if (!prev) {
-        return prev
-      }
-      const next = updater(prev)
-      setEditorText(toTaxSchemaYamlText(next))
-      setEditorError(null)
-      return next
-    })
-  }
-
-  const handleEditorChange = (value: string): void => {
-    setEditorText(value)
-    const parsedResult = parseTaxSchemaFromText(value)
-    if (parsedResult.error || !parsedResult.schema) {
-      setEditorError(parsedResult.error)
-      return
-    }
-    setDraftTaxSchema(parsedResult.schema)
-    setEditorError(null)
-  }
-
-  const handleNormalizeEditorText = (): void => {
-    if (!draftTaxSchema) {
-      return
-    }
-    setEditorText(toTaxSchemaYamlText(draftTaxSchema))
-    setEditorError(null)
-  }
-
-  const handleConfirm = async (): Promise<void> => {
-    if (!draftTaxSchema || editorError) {
-      return
-    }
-    setIsSubmitting(true)
+  const runPreview = async (): Promise<SchemaValidationReport | null> => {
+    setIsPreviewing(true)
     try {
-      await onConfirm(draftTaxSchema)
+      const result = await window.api.previewTaxSchema(editorText)
+      if (!result.success || !result.report) {
+        throw new Error(result.error ?? 'スキーマ検証に失敗しました。')
+      }
+      setReport(result.report)
+      return result.report
+    } catch (error) {
+      toast({
+        title: '検証に失敗しました。',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        status: 'error',
+        duration: 2500,
+        isClosable: true,
+        position: 'bottom-right'
+      })
+      return null
     } finally {
-      setIsSubmitting(false)
+      setIsPreviewing(false)
     }
   }
 
-  const isConfirmDisabled = !draftTaxSchema || Boolean(editorError) || isLoading || isSubmitting
+  const handleApply = async (): Promise<void> => {
+    setIsApplying(true)
+    try {
+      const latestReport = report ?? (await runPreview())
+      if (!latestReport || !latestReport.isValid) {
+        return
+      }
+
+      const result = await window.api.applyTaxSchema({
+        yamlText: editorText,
+        note: 'applied from editor dialog'
+      })
+      if (!result.success || !result.taxSchema) {
+        throw new Error(result.error ?? '税制スキーマの適用に失敗しました。')
+      }
+
+      await onApplied(result.taxSchema)
+      setEditorText(stringifySchema(result.taxSchema))
+      setReport(result.report ?? latestReport)
+      await loadHistory()
+
+      toast({
+        title: '税制スキーマを適用しました。',
+        status: 'success',
+        duration: 2000,
+        isClosable: true,
+        position: 'bottom-right'
+      })
+    } catch (error) {
+      toast({
+        title: '適用に失敗しました。',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        status: 'error',
+        duration: 2500,
+        isClosable: true,
+        position: 'bottom-right'
+      })
+    } finally {
+      setIsApplying(false)
+    }
+  }
+
+  const handleRestore = async (snapshotId: string): Promise<void> => {
+    try {
+      const result = await window.api.restoreTaxSchema(snapshotId)
+      if (!result.success || !result.taxSchema) {
+        throw new Error(result.error ?? '復元に失敗しました。')
+      }
+      await onApplied(result.taxSchema)
+      setEditorText(stringifySchema(result.taxSchema))
+      setReport(null)
+      await loadHistory()
+
+      toast({
+        title: 'スキーマを復元しました。',
+        status: 'success',
+        duration: 2000,
+        isClosable: true,
+        position: 'bottom-right'
+      })
+    } catch (error) {
+      toast({
+        title: '復元に失敗しました。',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        status: 'error',
+        duration: 2500,
+        isClosable: true,
+        position: 'bottom-right'
+      })
+    }
+  }
 
   return (
     <Modal
@@ -323,11 +278,11 @@ export function TaxRuleDialog({
     >
       <ModalOverlay />
       <ModalContent bg="brand.base">
-        <ModalHeader>税金ルール設定</ModalHeader>
+        <ModalHeader>税金ルール設定（YAML）</ModalHeader>
         <ModalCloseButton />
 
         <ModalBody overflowY="auto" maxH="72vh" pt={0} px={6} pb={6}>
-          {isLoading && !draftTaxSchema ? (
+          {isLoading && !initialTaxSchema ? (
             <HStack justifyContent="center" py={12}>
               <Spinner />
               <Text>税金ルールを読み込み中...</Text>
@@ -353,7 +308,7 @@ export function TaxRuleDialog({
                   _hover={{ bg: 'gray.100' }}
                   _selected={{ bg: 'teal.500', color: 'white' }}
                 >
-                  フォームモード
+                  エディター
                 </Tab>
                 <Tab
                   fontWeight="semibold"
@@ -362,453 +317,185 @@ export function TaxRuleDialog({
                   _hover={{ bg: 'gray.100' }}
                   _selected={{ bg: 'teal.500', color: 'white' }}
                 >
-                  YAMLエディットモード
+                  確認画面
                 </Tab>
               </TabList>
 
               <TabPanels>
                 <TabPanel px={0} pt={0}>
-                  {draftTaxSchema && (
-                    <VStack align="stretch" spacing={4}>
-                      <Box bg="white" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={4}>
-                        <FormControl>
-                          <FormLabel>バージョン</FormLabel>
-                          <Input
-                            value={draftTaxSchema.version}
-                            onChange={(e): void =>
-                              updateDraft((prev) => ({
-                                ...prev,
-                                version: e.target.value
-                              }))
-                            }
-                          />
-                        </FormControl>
-                      </Box>
-
-                      <Box bg="white" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={4}>
-                        <Text fontWeight="bold" mb={3}>
-                          所得税の税率テーブル
-                        </Text>
-                        <VStack align="stretch" spacing={3}>
-                          {draftTaxSchema.incomeTaxRates.map((rateRow, index) => (
-                            <VStack
-                              key={`income-tax-row-${index}`}
-                              align="stretch"
-                              spacing={2}
-                              borderWidth="1px"
-                              borderColor="gray.100"
-                              borderRadius="md"
-                              p={3}
-                              bg="gray.50"
-                            >
-                              <HStack justifyContent="space-between">
-                                <Text fontWeight="medium">{index + 1}段目</Text>
-                                <IconButton
-                                  aria-label="税率段を削除"
-                                  icon={<FaTrash />}
-                                  size="sm"
-                                  colorScheme="red"
-                                  variant="ghost"
-                                  isDisabled={draftTaxSchema.incomeTaxRates.length <= 1}
-                                  onClick={(): void =>
-                                    updateDraft((prev) => ({
-                                      ...prev,
-                                      incomeTaxRates: prev.incomeTaxRates.filter((_, i) => i !== index)
-                                    }))
-                                  }
-                                />
-                              </HStack>
-
-                              <HStack alignItems="center" justifyContent="space-between">
-                                <FormLabel mb={0}>上限なし</FormLabel>
-                                <Switch
-                                  isChecked={rateRow.threshold === null}
-                                  onChange={(e): void =>
-                                    updateDraft((prev) => ({
-                                      ...prev,
-                                      incomeTaxRates: prev.incomeTaxRates.map((row, i) =>
-                                        i === index
-                                          ? { ...row, threshold: e.target.checked ? null : 0 }
-                                          : row
-                                      )
-                                    }))
-                                  }
-                                />
-                              </HStack>
-
-                              <FormControl isDisabled={rateRow.threshold === null}>
-                                <FormLabel>課税所得の上限</FormLabel>
-                                <NumberInput
-                                  min={0}
-                                  value={rateRow.threshold ?? 0}
-                                  onChange={(_, valueAsNumber): void =>
-                                    updateDraft((prev) => ({
-                                      ...prev,
-                                      incomeTaxRates: prev.incomeTaxRates.map((row, i) =>
-                                        i === index
-                                          ? {
-                                              ...row,
-                                              threshold: isNaN(valueAsNumber) ? 0 : valueAsNumber
-                                            }
-                                          : row
-                                      )
-                                    }))
-                                  }
-                                >
-                                  <NumberInputField inputMode="numeric" />
-                                </NumberInput>
-                              </FormControl>
-
-                              <FormControl>
-                                <FormLabel>税率</FormLabel>
-                                <NumberInput
-                                  min={0}
-                                  step={0.001}
-                                  precision={4}
-                                  value={rateRow.rate}
-                                  onChange={(_, valueAsNumber): void =>
-                                    updateDraft((prev) => ({
-                                      ...prev,
-                                      incomeTaxRates: prev.incomeTaxRates.map((row, i) =>
-                                        i === index
-                                          ? { ...row, rate: isNaN(valueAsNumber) ? 0 : valueAsNumber }
-                                          : row
-                                      )
-                                    }))
-                                  }
-                                >
-                                  <NumberInputField inputMode="decimal" />
-                                </NumberInput>
-                              </FormControl>
-
-                              <FormControl>
-                                <FormLabel>控除額</FormLabel>
-                                <NumberInput
-                                  min={0}
-                                  value={rateRow.deduction}
-                                  onChange={(_, valueAsNumber): void =>
-                                    updateDraft((prev) => ({
-                                      ...prev,
-                                      incomeTaxRates: prev.incomeTaxRates.map((row, i) =>
-                                        i === index
-                                          ? {
-                                              ...row,
-                                              deduction: isNaN(valueAsNumber) ? 0 : valueAsNumber
-                                            }
-                                          : row
-                                      )
-                                    }))
-                                  }
-                                >
-                                  <NumberInputField inputMode="numeric" />
-                                </NumberInput>
-                              </FormControl>
-                            </VStack>
-                          ))}
-                        </VStack>
-
-                        <Button
-                          mt={3}
-                          leftIcon={<FaPlus />}
-                          onClick={(): void =>
-                            updateDraft((prev) => ({
-                              ...prev,
-                              incomeTaxRates: [
-                                ...prev.incomeTaxRates,
-                                { threshold: null, rate: 0, deduction: 0 }
-                              ]
-                            }))
-                          }
-                        >
-                          税率段を追加
-                        </Button>
-                      </Box>
-
-                      <Box bg="white" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={4}>
-                        <Text fontWeight="bold" mb={3}>
-                          住民税・社会保険
-                        </Text>
-                        <VStack align="stretch" spacing={3}>
-                          <FormControl>
-                            <FormLabel>住民税率</FormLabel>
-                            <NumberInput
-                              min={0}
-                              step={0.001}
-                              precision={4}
-                              value={draftTaxSchema.residentTaxRate}
-                              onChange={(_, valueAsNumber): void =>
-                                updateDraft((prev) => ({
-                                  ...prev,
-                                  residentTaxRate: isNaN(valueAsNumber) ? 0 : valueAsNumber
-                                }))
-                              }
-                            >
-                              <NumberInputField inputMode="decimal" />
-                            </NumberInput>
-                          </FormControl>
-
-                          <Divider />
-
-                          <FormControl>
-                            <FormLabel>健康保険料率</FormLabel>
-                            <NumberInput
-                              min={0}
-                              step={0.001}
-                              precision={4}
-                              value={draftTaxSchema.socialInsurance.healthInsurance.rate}
-                              onChange={(_, valueAsNumber): void =>
-                                updateDraft((prev) => ({
-                                  ...prev,
-                                  socialInsurance: {
-                                    ...prev.socialInsurance,
-                                    healthInsurance: {
-                                      ...prev.socialInsurance.healthInsurance,
-                                      rate: isNaN(valueAsNumber) ? 0 : valueAsNumber
-                                    }
-                                  }
-                                }))
-                              }
-                            >
-                              <NumberInputField inputMode="decimal" />
-                            </NumberInput>
-                          </FormControl>
-
-                          <FormControl>
-                            <FormLabel>健康保険 標準報酬月額上限</FormLabel>
-                            <NumberInput
-                              min={0}
-                              value={draftTaxSchema.socialInsurance.healthInsurance.maxStandardRemuneration}
-                              onChange={(_, valueAsNumber): void =>
-                                updateDraft((prev) => ({
-                                  ...prev,
-                                  socialInsurance: {
-                                    ...prev.socialInsurance,
-                                    healthInsurance: {
-                                      ...prev.socialInsurance.healthInsurance,
-                                      maxStandardRemuneration: isNaN(valueAsNumber) ? 0 : valueAsNumber
-                                    }
-                                  }
-                                }))
-                              }
-                            >
-                              <NumberInputField inputMode="numeric" />
-                            </NumberInput>
-                          </FormControl>
-
-                          <FormControl>
-                            <FormLabel>厚生年金保険料率</FormLabel>
-                            <NumberInput
-                              min={0}
-                              step={0.001}
-                              precision={4}
-                              value={draftTaxSchema.socialInsurance.pension.rate}
-                              onChange={(_, valueAsNumber): void =>
-                                updateDraft((prev) => ({
-                                  ...prev,
-                                  socialInsurance: {
-                                    ...prev.socialInsurance,
-                                    pension: {
-                                      ...prev.socialInsurance.pension,
-                                      rate: isNaN(valueAsNumber) ? 0 : valueAsNumber
-                                    }
-                                  }
-                                }))
-                              }
-                            >
-                              <NumberInputField inputMode="decimal" />
-                            </NumberInput>
-                          </FormControl>
-
-                          <FormControl>
-                            <FormLabel>厚生年金 標準報酬月額上限</FormLabel>
-                            <NumberInput
-                              min={0}
-                              value={draftTaxSchema.socialInsurance.pension.maxStandardRemuneration}
-                              onChange={(_, valueAsNumber): void =>
-                                updateDraft((prev) => ({
-                                  ...prev,
-                                  socialInsurance: {
-                                    ...prev.socialInsurance,
-                                    pension: {
-                                      ...prev.socialInsurance.pension,
-                                      maxStandardRemuneration: isNaN(valueAsNumber) ? 0 : valueAsNumber
-                                    }
-                                  }
-                                }))
-                              }
-                            >
-                              <NumberInputField inputMode="numeric" />
-                            </NumberInput>
-                          </FormControl>
-
-                          <FormControl>
-                            <FormLabel>雇用保険料率</FormLabel>
-                            <NumberInput
-                              min={0}
-                              step={0.001}
-                              precision={4}
-                              value={draftTaxSchema.socialInsurance.employmentInsurance.rate}
-                              onChange={(_, valueAsNumber): void =>
-                                updateDraft((prev) => ({
-                                  ...prev,
-                                  socialInsurance: {
-                                    ...prev.socialInsurance,
-                                    employmentInsurance: {
-                                      rate: isNaN(valueAsNumber) ? 0 : valueAsNumber
-                                    }
-                                  }
-                                }))
-                              }
-                            >
-                              <NumberInputField inputMode="decimal" />
-                            </NumberInput>
-                          </FormControl>
-                        </VStack>
-                      </Box>
-
-                      <Box bg="white" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={4}>
-                        <Text fontWeight="bold" mb={3}>
-                          所得控除額
-                        </Text>
-                        <VStack align="stretch" spacing={3}>
-                          <FormControl>
-                            <FormLabel>基礎控除</FormLabel>
-                            <NumberInput
-                              min={0}
-                              value={draftTaxSchema.deductions.basic}
-                              onChange={(_, valueAsNumber): void =>
-                                updateDraft((prev) => ({
-                                  ...prev,
-                                  deductions: {
-                                    ...prev.deductions,
-                                    basic: isNaN(valueAsNumber) ? 0 : valueAsNumber
-                                  }
-                                }))
-                              }
-                            >
-                              <NumberInputField inputMode="numeric" />
-                            </NumberInput>
-                          </FormControl>
-
-                          <FormControl>
-                            <FormLabel>配偶者控除</FormLabel>
-                            <NumberInput
-                              min={0}
-                              value={draftTaxSchema.deductions.spouse}
-                              onChange={(_, valueAsNumber): void =>
-                                updateDraft((prev) => ({
-                                  ...prev,
-                                  deductions: {
-                                    ...prev.deductions,
-                                    spouse: isNaN(valueAsNumber) ? 0 : valueAsNumber
-                                  }
-                                }))
-                              }
-                            >
-                              <NumberInputField inputMode="numeric" />
-                            </NumberInput>
-                          </FormControl>
-
-                          <FormControl>
-                            <FormLabel>扶養控除（1人あたり）</FormLabel>
-                            <NumberInput
-                              min={0}
-                              value={draftTaxSchema.deductions.dependent}
-                              onChange={(_, valueAsNumber): void =>
-                                updateDraft((prev) => ({
-                                  ...prev,
-                                  deductions: {
-                                    ...prev.deductions,
-                                    dependent: isNaN(valueAsNumber) ? 0 : valueAsNumber
-                                  }
-                                }))
-                              }
-                            >
-                              <NumberInputField inputMode="numeric" />
-                            </NumberInput>
-                          </FormControl>
-                        </VStack>
-                      </Box>
-                    </VStack>
-                  )}
+                  <Box
+                    borderRadius="2xl"
+                    p="1px"
+                    bgGradient="linear(to-r, blue.200, cyan.100)"
+                    boxShadow="0 18px 34px rgba(15, 23, 42, 0.11)"
+                  >
+                    <Box borderRadius="calc(var(--chakra-radii-2xl) - 1px)" overflow="hidden" bg="white">
+                      <CodeMirror
+                        value={editorText}
+                        onChange={(value): void => setEditorText(value)}
+                        height="560px"
+                        basicSetup={{
+                          lineNumbers: true,
+                          foldGutter: true,
+                          highlightActiveLine: true,
+                          highlightActiveLineGutter: true,
+                          bracketMatching: true,
+                          indentOnInput: true,
+                          tabSize: 2
+                        }}
+                        extensions={yamlEditorExtensions}
+                        theme={yamlEditorTheme}
+                      />
+                    </Box>
+                  </Box>
                 </TabPanel>
 
                 <TabPanel px={0} pt={0}>
-                  <FormControl>
-                    <HStack mb={2} justifyContent="space-between" alignItems="center">
-                      <FormLabel mb={0} fontSize="sm" color="gray.700" fontWeight="semibold">
-                        税金ルールYAML
-                      </FormLabel>
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        borderRadius="full"
-                        px={3}
-                        bg="white"
-                        _hover={{ bg: 'gray.100' }}
-                        onClick={handleNormalizeEditorText}
-                        isDisabled={!draftTaxSchema}
-                      >
-                        フォーマット
-                      </Button>
-                    </HStack>
-                    <Box
-                      borderRadius="2xl"
-                      p="1px"
-                      bgGradient={
-                        editorError
-                          ? 'linear(to-r, red.200, orange.100)'
-                          : 'linear(to-r, blue.200, cyan.100)'
-                      }
-                      boxShadow="0 18px 34px rgba(15, 23, 42, 0.11)"
-                    >
-                      <Box borderRadius="calc(var(--chakra-radii-2xl) - 1px)" overflow="hidden" bg="white">
-                        <HStack
-                          px={4}
-                          py={2.5}
-                          borderBottomWidth="1px"
-                          borderColor={editorError ? 'red.100' : 'blue.100'}
-                          bgGradient="linear(to-r, white, #f8fbff)"
-                          justifyContent="space-between"
-                        >
-                          <HStack spacing={2}>
-                            <Text fontSize="xs" fontWeight="bold" letterSpacing="0.08em" color="gray.600">
-                              YAML EDITOR
-                            </Text>
-                          </HStack>
-                          <Text
-                            fontSize="xs"
-                            color={editorError ? 'red.500' : 'teal.600'}
-                            fontWeight="semibold"
-                          >
-                            {editorError ? '構文エラーあり' : '構文OK'}
+                  <VStack align="stretch" spacing={4}>
+                    <Box bg="white" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={4}>
+                      <HStack justifyContent="space-between" alignItems="center">
+                        <Text fontWeight="bold">検証ステータス</Text>
+                        <Badge colorScheme={report?.isValid ? 'green' : 'red'}>
+                          {report ? (report.isValid ? 'VALID' : 'INVALID') : '未検証'}
+                        </Badge>
+                      </HStack>
+                      <Divider my={3} />
+
+                      <Text fontSize="sm" fontWeight="semibold" mb={1}>
+                        構文結果
+                      </Text>
+                      {parsedErrors.syntax.length > 0 ? (
+                        <UnorderedList spacing={1} pl={4} color="red.500" fontSize="sm">
+                          {parsedErrors.syntax.map((error, index) => (
+                            <ListItem key={`syntax-${index}`}>{error}</ListItem>
+                          ))}
+                        </UnorderedList>
+                      ) : (
+                        <Text fontSize="sm" color="gray.600">
+                          エラーなし
+                        </Text>
+                      )}
+
+                      <Text fontSize="sm" fontWeight="semibold" mt={3} mb={1}>
+                        構造検証結果
+                      </Text>
+                      {parsedErrors.structure.length > 0 ? (
+                        <UnorderedList spacing={1} pl={4} color="red.500" fontSize="sm">
+                          {parsedErrors.structure.map((error, index) => (
+                            <ListItem key={`struct-${index}`}>{error}</ListItem>
+                          ))}
+                        </UnorderedList>
+                      ) : (
+                        <Text fontSize="sm" color="gray.600">
+                          エラーなし
+                        </Text>
+                      )}
+
+                      <Text fontSize="sm" fontWeight="semibold" mt={3} mb={1}>
+                        意味検証結果
+                      </Text>
+                      {parsedErrors.semantic.length > 0 ? (
+                        <UnorderedList spacing={1} pl={4} color="red.500" fontSize="sm">
+                          {parsedErrors.semantic.map((error, index) => (
+                            <ListItem key={`semantic-${index}`}>{error}</ListItem>
+                          ))}
+                        </UnorderedList>
+                      ) : (
+                        <Text fontSize="sm" color="gray.600">
+                          エラーなし
+                        </Text>
+                      )}
+
+                      {report?.warnings.length ? (
+                        <>
+                          <Text fontSize="sm" fontWeight="semibold" mt={3} mb={1}>
+                            警告
                           </Text>
-                        </HStack>
-                        <CodeMirror
-                          value={editorText}
-                          onChange={(value): void => handleEditorChange(value)}
-                          height="550px"
-                          basicSetup={{
-                            lineNumbers: true,
-                            foldGutter: true,
-                            highlightActiveLine: true,
-                            highlightActiveLineGutter: true,
-                            bracketMatching: true,
-                            indentOnInput: true,
-                            tabSize: 2
-                          }}
-                          extensions={yamlEditorExtensions}
-                          theme={yamlEditorTheme}
-                        />
-                      </Box>
+                          <UnorderedList spacing={1} pl={4} color="orange.500" fontSize="sm">
+                            {report.warnings.map((warning, index) => (
+                              <ListItem key={`warning-${index}`}>{warning}</ListItem>
+                            ))}
+                          </UnorderedList>
+                        </>
+                      ) : null}
                     </Box>
-                  </FormControl>
-                  {editorError && (
-                    <Text mt={2} color="red.500" fontSize="sm">
-                      {editorError}
-                    </Text>
-                  )}
-               </TabPanel>
+
+                    <Box bg="white" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={4}>
+                      <Text fontWeight="bold" mb={3}>
+                        現行との差分サマリ
+                      </Text>
+                      {report?.diffSummary ? (
+                        <VStack align="stretch" spacing={2} fontSize="sm">
+                          <Text>追加: {report.diffSummary.added.length}</Text>
+                          <Text>削除: {report.diffSummary.removed.length}</Text>
+                          <Text>変更: {report.diffSummary.changed.length}</Text>
+                          <Text>合計: {report.diffSummary.totalChanges}</Text>
+                        </VStack>
+                      ) : (
+                        <Text fontSize="sm" color="gray.600">
+                          まだ差分を計算していません。
+                        </Text>
+                      )}
+                    </Box>
+
+                    <Box bg="white" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={4}>
+                      <Text fontWeight="bold" mb={3}>
+                        適用対象バージョン情報
+                      </Text>
+                      {report?.normalizedSchema ? (
+                        <VStack align="stretch" spacing={1} fontSize="sm">
+                          <Text>schemaVersion: {report.normalizedSchema.schemaVersion}</Text>
+                          <Text>version: {report.normalizedSchema.version}</Text>
+                          <Text>effectiveFrom: {report.normalizedSchema.effectiveFrom}</Text>
+                          <Text>
+                            effectiveTo:{' '}
+                            {report.normalizedSchema.effectiveTo ? report.normalizedSchema.effectiveTo : 'null'}
+                          </Text>
+                        </VStack>
+                      ) : (
+                        <Text fontSize="sm" color="gray.600">
+                          まだ検証していません。
+                        </Text>
+                      )}
+                    </Box>
+
+                    <Box bg="white" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={4}>
+                      <Text fontWeight="bold" mb={3}>
+                        過去スキーマ履歴
+                      </Text>
+                      {history.length > 0 ? (
+                        <VStack align="stretch" spacing={2}>
+                          {history.map((snapshot) => (
+                            <HStack key={snapshot.id} justifyContent="space-between" alignItems="flex-start">
+                              <VStack align="stretch" spacing={0} fontSize="sm">
+                                <Text fontWeight="semibold">
+                                  {snapshot.lawVersion}{' '}
+                                  {snapshot.id === activeSnapshotId ? '(active)' : ''}
+                                </Text>
+                                <Text color="gray.600">{snapshot.createdAt}</Text>
+                                <Text color="gray.600">{snapshot.note || '-'}</Text>
+                              </VStack>
+                              <Button
+                                size="xs"
+                                variant="outline"
+                                isDisabled={snapshot.id === activeSnapshotId}
+                                onClick={(): void => {
+                                  void handleRestore(snapshot.id)
+                                }}
+                              >
+                                復元
+                              </Button>
+                            </HStack>
+                          ))}
+                        </VStack>
+                      ) : (
+                        <Text fontSize="sm" color="gray.600">
+                          履歴はありません。
+                        </Text>
+                      )}
+                    </Box>
+                  </VStack>
+                </TabPanel>
               </TabPanels>
             </Tabs>
           )}
@@ -817,17 +504,26 @@ export function TaxRuleDialog({
         <ModalFooter>
           <HStack spacing={3}>
             <Button variant="outline" onClick={onCloseWithoutChanges}>
-              変更せず閉じる
+              閉じる
+            </Button>
+            <Button
+              variant="outline"
+              onClick={(): void => {
+                void runPreview()
+              }}
+              isLoading={isPreviewing}
+            >
+              確認を更新
             </Button>
             <Button
               colorScheme="teal"
               onClick={(): void => {
-                void handleConfirm()
+                void handleApply()
               }}
-              isLoading={isSubmitting}
-              isDisabled={isConfirmDisabled}
+              isLoading={isApplying}
+              isDisabled={isLoading}
             >
-              変更を確定
+              変更を適用
             </Button>
           </HStack>
         </ModalFooter>

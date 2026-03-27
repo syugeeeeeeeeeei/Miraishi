@@ -9,10 +9,29 @@ import icon from '../../resources/icon.png?asset'
 import Store from 'electron-store'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
-import { parse as parseYaml } from 'yaml'
-import type { GraphViewSettings, PredictionResult, Scenario, TaxSchema } from '../types/miraishi'
-import { scenarioSchema, taxSchemaSchema } from './lib/validators'
+import { parse as parseYaml, parseDocument } from 'yaml'
+import type {
+  GraphViewSettings,
+  PredictionResult,
+  Scenario,
+  SchemaValidationReport,
+  TaxSchema,
+  TaxSchemaDiffSummary,
+  TaxSchemaSnapshot,
+  TaxSchemaState,
+  TaxSchemaV2
+} from '../types/miraishi'
+import {
+  normalizeTaxSchema,
+  parseTaxSchemaUnknown,
+  scenarioSchema,
+  taxSchemaSchema,
+  taxSchemaV2Schema,
+  validateTaxSchemaV2Semantics
+} from './lib/validators'
 import { calculatePrediction } from './lib/calculator'
+import { compileTaxSchemaV2 } from './lib/taxSchemaEngine'
+import { diffAsJsonPointers } from './lib/schemaDiff'
 
 // -----------------------------------------------------------------------------
 // 初期化
@@ -21,6 +40,7 @@ import { calculatePrediction } from './lib/calculator'
 type AppStore = {
   scenarios: Scenario[]
   taxSchema?: TaxSchema
+  taxSchemaState?: TaxSchemaState
 }
 
 const store = new Store<AppStore>({
@@ -30,11 +50,92 @@ const store = new Store<AppStore>({
 })
 
 const initialCalculationCache = new Map<string, PredictionResult>()
+const HISTORY_LIMIT = 100
 
 const taxSchemaPath = join(__dirname, '../../resources/schema/tax_schema.yaml')
 const legacyTaxSchemaPath = join(__dirname, '../../resources/schema/tax_schema.json')
 
-const loadBundledTaxSchema = (): TaxSchema => {
+const createSchemaHash = (schema: TaxSchemaV2): string => {
+  return crypto.createHash('sha256').update(JSON.stringify(schema)).digest('hex')
+}
+
+const createSnapshot = (schema: TaxSchemaV2, note: string): TaxSchemaSnapshot => ({
+  id: crypto.randomUUID(),
+  hash: createSchemaHash(schema),
+  schemaVersion: schema.schemaVersion,
+  lawVersion: schema.version,
+  createdAt: new Date().toISOString(),
+  note,
+  schema
+})
+
+const parseStoredTaxSchemaState = (raw: unknown): TaxSchemaState | null => {
+  if (!raw || typeof raw !== 'object') {
+    return null
+  }
+
+  const maybe = raw as TaxSchemaState
+  if (!Array.isArray(maybe.snapshots)) {
+    return null
+  }
+
+  const snapshots: TaxSchemaSnapshot[] = []
+  for (const snapshot of maybe.snapshots) {
+    if (!snapshot || typeof snapshot !== 'object') {
+      continue
+    }
+    const parsedSchema = taxSchemaV2Schema.safeParse((snapshot as TaxSchemaSnapshot).schema)
+    if (!parsedSchema.success) {
+      continue
+    }
+    const validatedSchema = parsedSchema.data as TaxSchemaV2
+    snapshots.push({
+      id: String((snapshot as TaxSchemaSnapshot).id ?? crypto.randomUUID()),
+      hash: String((snapshot as TaxSchemaSnapshot).hash ?? createSchemaHash(validatedSchema)),
+      schemaVersion: String((snapshot as TaxSchemaSnapshot).schemaVersion ?? validatedSchema.schemaVersion),
+      lawVersion: String((snapshot as TaxSchemaSnapshot).lawVersion ?? validatedSchema.version),
+      createdAt: String((snapshot as TaxSchemaSnapshot).createdAt ?? new Date().toISOString()),
+      note: String((snapshot as TaxSchemaSnapshot).note ?? ''),
+      schema: validatedSchema
+    })
+  }
+
+  if (snapshots.length === 0) {
+    return null
+  }
+
+  const activeSnapshotId =
+    typeof maybe.activeSnapshotId === 'string' && snapshots.some((s) => s.id === maybe.activeSnapshotId)
+      ? maybe.activeSnapshotId
+      : snapshots[snapshots.length - 1].id
+
+  const legacyBackups = Array.isArray(maybe.legacyBackups)
+    ? maybe.legacyBackups.filter((item) => taxSchemaSchema.safeParse(item).success)
+    : []
+
+  return {
+    activeSnapshotId,
+    snapshots,
+    legacyBackups
+  }
+}
+
+const trimHistory = (state: TaxSchemaState): TaxSchemaState => {
+  if (state.snapshots.length <= HISTORY_LIMIT) {
+    return state
+  }
+
+  const snapshots = state.snapshots.slice(state.snapshots.length - HISTORY_LIMIT)
+  const activeStillExists = snapshots.some((s) => s.id === state.activeSnapshotId)
+
+  return {
+    ...state,
+    snapshots,
+    activeSnapshotId: activeStillExists ? state.activeSnapshotId : snapshots[snapshots.length - 1].id
+  }
+}
+
+const loadBundledTaxSchema = (): TaxSchemaV2 => {
   const candidatePaths = [taxSchemaPath, legacyTaxSchemaPath]
   let lastError: unknown = null
 
@@ -49,7 +150,8 @@ const loadBundledTaxSchema = (): TaxSchema => {
         candidatePath.endsWith('.yaml') || candidatePath.endsWith('.yml')
           ? parseYaml(rawData)
           : JSON.parse(rawData)
-      return taxSchemaSchema.parse(parsed)
+      const parsedSchema = parseTaxSchemaUnknown(parsed)
+      return normalizeTaxSchema(parsedSchema)
     } catch (error) {
       lastError = error
     }
@@ -61,20 +163,166 @@ const loadBundledTaxSchema = (): TaxSchema => {
   throw new Error('Bundled tax schema file was not found.')
 }
 
-let taxSchema: TaxSchema | null = null
-try {
-  const bundledTaxSchema = loadBundledTaxSchema()
-  const storedTaxSchema = store.get('taxSchema')
-  if (storedTaxSchema) {
-    taxSchema = taxSchemaSchema.parse(storedTaxSchema)
-  } else {
-    taxSchema = bundledTaxSchema
-    store.set('taxSchema', bundledTaxSchema)
+const normalizeStoredScenarios = (): Scenario[] => {
+  const scenarios = store.get('scenarios', [])
+  const normalized: Scenario[] = []
+
+  scenarios.forEach((scenario) => {
+    const parsed = scenarioSchema.safeParse(scenario)
+    if (parsed.success) {
+      normalized.push(parsed.data as Scenario)
+    }
+  })
+
+  if (normalized.length !== scenarios.length) {
+    console.warn('Some invalid scenarios were dropped during normalization.')
   }
-  console.log('Tax schema loaded successfully.')
+
+  if (JSON.stringify(scenarios) !== JSON.stringify(normalized)) {
+    store.set('scenarios', normalized)
+  }
+
+  return normalized
+}
+
+const validateAndCompile = (
+  schema: TaxSchemaV2
+): { errors: string[]; warnings: string[]; compiled?: ReturnType<typeof compileTaxSchemaV2> } => {
+  const semantic = validateTaxSchemaV2Semantics(schema)
+  if (semantic.errors.length > 0) {
+    return { errors: semantic.errors, warnings: semantic.warnings }
+  }
+
+  try {
+    const compiled = compileTaxSchemaV2(schema)
+    return { errors: [], warnings: semantic.warnings, compiled }
+  } catch (error) {
+    return {
+      errors: [error instanceof Error ? error.message : 'Failed to compile schema formula.'],
+      warnings: semantic.warnings
+    }
+  }
+}
+
+const buildValidationReport = (
+  normalizedSchema: TaxSchemaV2,
+  currentSchema: TaxSchemaV2
+): SchemaValidationReport => {
+  const validation = validateAndCompile(normalizedSchema)
+  const diffSummary = diffAsJsonPointers(currentSchema, normalizedSchema)
+
+  return {
+    isValid: validation.errors.length === 0,
+    errors: validation.errors,
+    warnings: validation.warnings,
+    normalizedSchema,
+    diffSummary
+  }
+}
+
+const parseYamlSchemaToReport = (
+  yamlText: string,
+  currentSchema: TaxSchemaV2
+): SchemaValidationReport => {
+  const doc = parseDocument(yamlText)
+  if (doc.errors.length > 0) {
+    return {
+      isValid: false,
+      errors: doc.errors.map((error) => `YAML構文エラー: ${error.message}`),
+      warnings: []
+    }
+  }
+
+  const parsedUnknown = doc.toJS()
+  let parsedSchema: TaxSchema
+
+  try {
+    parsedSchema = parseTaxSchemaUnknown(parsedUnknown)
+  } catch (error) {
+    return {
+      isValid: false,
+      errors: [error instanceof Error ? error.message : 'スキーマの構造が不正です。'],
+      warnings: []
+    }
+  }
+
+  const normalized = normalizeTaxSchema(parsedSchema)
+  return buildValidationReport(normalized, currentSchema)
+}
+
+let taxSchemaState: TaxSchemaState
+let activeTaxSchema: TaxSchemaV2
+let compiledActiveTaxSchema: ReturnType<typeof compileTaxSchemaV2>
+
+try {
+  const bundledSchema = loadBundledTaxSchema()
+  const storedStateRaw = store.get('taxSchemaState')
+  const storedState = parseStoredTaxSchemaState(storedStateRaw)
+
+  if (storedState) {
+    taxSchemaState = trimHistory(storedState)
+  } else {
+    const storedLegacyRaw = store.get('taxSchema')
+    if (storedLegacyRaw) {
+      const parsedLegacy = parseTaxSchemaUnknown(storedLegacyRaw)
+      const normalizedLegacy = normalizeTaxSchema(parsedLegacy)
+      taxSchemaState = {
+        activeSnapshotId: null,
+        snapshots: [createSnapshot(normalizedLegacy, 'legacy import')],
+        legacyBackups: parsedLegacy && !('schemaVersion' in parsedLegacy) ? [parsedLegacy] : []
+      }
+    } else {
+      taxSchemaState = {
+        activeSnapshotId: null,
+        snapshots: [createSnapshot(bundledSchema, 'bundled default')],
+        legacyBackups: []
+      }
+    }
+  }
+
+  const activeSnapshot =
+    taxSchemaState.snapshots.find((snapshot) => snapshot.id === taxSchemaState.activeSnapshotId) ??
+    taxSchemaState.snapshots[taxSchemaState.snapshots.length - 1]
+
+  taxSchemaState.activeSnapshotId = activeSnapshot.id
+  activeTaxSchema = activeSnapshot.schema
+
+  const compiled = validateAndCompile(activeTaxSchema)
+  if (compiled.errors.length > 0 || !compiled.compiled) {
+    throw new Error(compiled.errors.join('\n'))
+  }
+  compiledActiveTaxSchema = compiled.compiled
+
+  store.set('taxSchemaState', taxSchemaState)
+  store.set('taxSchema', activeTaxSchema)
+
+  normalizeStoredScenarios()
+  console.log('Tax schema state loaded successfully.')
 } catch (error) {
-  console.error('Failed to load tax schema:', error)
+  console.error('Failed to initialize tax schema state:', error)
   app.quit()
+}
+
+const applyNormalizedSchema = (schema: TaxSchemaV2, note: string): TaxSchemaSnapshot => {
+  const validation = validateAndCompile(schema)
+  if (validation.errors.length > 0 || !validation.compiled) {
+    throw new Error(validation.errors.join('\n'))
+  }
+
+  const snapshot = createSnapshot(schema, note)
+  taxSchemaState.snapshots.push(snapshot)
+  taxSchemaState.activeSnapshotId = snapshot.id
+  taxSchemaState = trimHistory(taxSchemaState)
+
+  activeTaxSchema = schema
+  compiledActiveTaxSchema = validation.compiled
+
+  store.set('taxSchemaState', taxSchemaState)
+  store.set('taxSchema', activeTaxSchema)
+
+  initialCalculationCache.clear()
+
+  return snapshot
 }
 
 // -----------------------------------------------------------------------------
@@ -125,36 +373,34 @@ app.whenReady().then((): void => {
 
   // 投機的バックグラウンド計算
   const scenarios = store.get('scenarios', [])
-  if (scenarios.length > 0 && taxSchema) {
-    const firstScenario = scenarios[0]
+  if (scenarios.length > 0) {
+    const firstScenario = scenarioSchema.parse(scenarios[0])
     const defaultSettings: GraphViewSettings = {
       predictionPeriod: 10,
       averageOvertimeHours: 0,
       displayItem: ['netAnnual']
     }
-    const settingsString = JSON.stringify(defaultSettings)
+    const settingsString = JSON.stringify({ settings: defaultSettings, schema: activeTaxSchema })
     const settingsHash = crypto.createHash('sha256').update(settingsString).digest('hex')
     const cacheKey = `${firstScenario.id}-${settingsHash}`
 
-    console.log(`Speculative calculation started for key: ${cacheKey}`)
     try {
       const result = calculatePrediction(
         { scenario: firstScenario, settings: defaultSettings },
-        taxSchema
+        compiledActiveTaxSchema
       )
       initialCalculationCache.set(cacheKey, result)
-      console.log(`Speculative calculation finished and cached for key: ${cacheKey}`)
     } catch (e) {
       console.error('Speculative calculation failed:', e)
     }
   }
 
-  // -----------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
   // IPCハンドラ
-  // -----------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
 
   ipcMain.handle('get-all-scenarios', (): Scenario[] => {
-    return store.get('scenarios', [])
+    return normalizeStoredScenarios()
   })
 
   ipcMain.handle(
@@ -162,17 +408,18 @@ app.whenReady().then((): void => {
     (_, newScenarioData: Omit<Scenario, 'id' | 'createdAt' | 'updatedAt'>) => {
       try {
         const now = new Date()
-        const newScenario: Scenario = {
+        const parsed = scenarioSchema.parse({
           ...newScenarioData,
           id: crypto.randomUUID(),
           createdAt: now,
           updatedAt: now
-        }
-        scenarioSchema.parse(newScenario)
+        })
+
         const scenarios = store.get('scenarios', [])
-        scenarios.push(newScenario)
+        scenarios.push(parsed)
         store.set('scenarios', scenarios)
-        return { success: true, scenario: newScenario }
+
+        return { success: true, scenario: parsed }
       } catch (error) {
         if (error instanceof Error) return { success: false, error: error.message }
         return { success: false, error: 'An unknown error occurred' }
@@ -182,23 +429,21 @@ app.whenReady().then((): void => {
 
   ipcMain.handle('update-scenario', (_, receivedScenario: Scenario) => {
     try {
-      const scenarioToValidate: Scenario = {
+      const scenarioToValidate = scenarioSchema.parse({
         ...receivedScenario,
         createdAt: new Date(receivedScenario.createdAt),
         updatedAt: new Date()
-      }
-      scenarioSchema.parse(scenarioToValidate)
+      })
+
       const scenarios = store.get('scenarios', [])
       const index = scenarios.findIndex((s) => s.id === scenarioToValidate.id)
       if (index === -1) throw new Error('Scenario not found')
 
-      // このシナリオに関連する全てのキャッシュを無効化
       for (const key of initialCalculationCache.keys()) {
         if (key.startsWith(scenarioToValidate.id)) {
           initialCalculationCache.delete(key)
         }
       }
-      console.log(`All caches invalidated for scenario: ${scenarioToValidate.title}`)
 
       scenarios[index] = scenarioToValidate
       store.set('scenarios', scenarios)
@@ -218,6 +463,13 @@ app.whenReady().then((): void => {
         throw new Error('Scenario not found for deletion')
       }
       store.set('scenarios', filteredScenarios)
+
+      for (const key of initialCalculationCache.keys()) {
+        if (key.startsWith(`${scenarioId}-`)) {
+          initialCalculationCache.delete(key)
+        }
+      }
+
       return { success: true }
     } catch (error) {
       console.error('Failed to delete scenario:', error)
@@ -226,12 +478,51 @@ app.whenReady().then((): void => {
     }
   })
 
-  const handleGetTaxSchema = (): { success: boolean; taxSchema?: TaxSchema; error?: string } => {
+  const handleGetTaxSchema = (): { success: boolean; taxSchema?: TaxSchemaV2; error?: string } => {
     try {
-      if (!taxSchema) {
-        throw new Error('Tax schema is not loaded.')
+      return { success: true, taxSchema: activeTaxSchema }
+    } catch (error) {
+      if (error instanceof Error) return { success: false, error: error.message }
+      return { success: false, error: 'An unknown error occurred' }
+    }
+  }
+
+  const handlePreviewTaxSchema = (
+    _,
+    yamlText: string
+  ): { success: boolean; report?: SchemaValidationReport; error?: string } => {
+    try {
+      const report = parseYamlSchemaToReport(yamlText, activeTaxSchema)
+      return { success: true, report }
+    } catch (error) {
+      if (error instanceof Error) return { success: false, error: error.message }
+      return { success: false, error: 'An unknown error occurred' }
+    }
+  }
+
+  const handleApplyTaxSchema = (
+    _,
+    payload: { yamlText: string; note?: string }
+  ): { success: boolean; report?: SchemaValidationReport; taxSchema?: TaxSchemaV2; error?: string } => {
+    try {
+      const currentSchema = activeTaxSchema
+      const report = parseYamlSchemaToReport(payload.yamlText, activeTaxSchema)
+      if (!report.isValid || !report.normalizedSchema) {
+        return { success: false, report, error: report.errors.join('\n') || 'スキーマ検証に失敗しました。' }
       }
-      return { success: true, taxSchema }
+
+      const snapshot = applyNormalizedSchema(report.normalizedSchema, payload.note ?? 'applied from editor')
+      const finalReport: SchemaValidationReport = {
+        ...report,
+        normalizedSchema: snapshot.schema,
+        diffSummary: diffAsJsonPointers(currentSchema, snapshot.schema)
+      }
+
+      return {
+        success: true,
+        report: finalReport,
+        taxSchema: snapshot.schema
+      }
     } catch (error) {
       if (error instanceof Error) return { success: false, error: error.message }
       return { success: false, error: 'An unknown error occurred' }
@@ -241,16 +532,83 @@ app.whenReady().then((): void => {
   const handleUpdateTaxSchema = (
     _,
     nextTaxSchema: TaxSchema
-  ): { success: boolean; taxSchema?: TaxSchema; error?: string } => {
+  ): { success: boolean; taxSchema?: TaxSchemaV2; report?: SchemaValidationReport; error?: string } => {
     try {
-      const validatedTaxSchema = taxSchemaSchema.parse(nextTaxSchema)
-      taxSchema = validatedTaxSchema
-      store.set('taxSchema', validatedTaxSchema)
+      const parsed = parseTaxSchemaUnknown(nextTaxSchema)
+      const normalized = normalizeTaxSchema(parsed)
+      const report = buildValidationReport(normalized, activeTaxSchema)
+      if (!report.isValid) {
+        return { success: false, report, error: report.errors.join('\n') }
+      }
 
-      // 税スキーマ変更時は全キャッシュを無効化
+      const snapshot = applyNormalizedSchema(normalized, 'legacy update-tax-schema')
+      return { success: true, taxSchema: snapshot.schema, report }
+    } catch (error) {
+      if (error instanceof Error) return { success: false, error: error.message }
+      return { success: false, error: 'An unknown error occurred' }
+    }
+  }
+
+  const handleListTaxSchemaHistory = (): {
+    success: boolean
+    activeSnapshotId?: string | null
+    snapshots?: TaxSchemaSnapshot[]
+    error?: string
+  } => {
+    try {
+      return {
+        success: true,
+        activeSnapshotId: taxSchemaState.activeSnapshotId,
+        snapshots: taxSchemaState.snapshots
+      }
+    } catch (error) {
+      if (error instanceof Error) return { success: false, error: error.message }
+      return { success: false, error: 'An unknown error occurred' }
+    }
+  }
+
+  const handleRestoreTaxSchema = (
+    _,
+    snapshotId: string
+  ): { success: boolean; taxSchema?: TaxSchemaV2; error?: string } => {
+    try {
+      const snapshot = taxSchemaState.snapshots.find((s) => s.id === snapshotId)
+      if (!snapshot) {
+        throw new Error('Snapshot not found')
+      }
+
+      const validation = validateAndCompile(snapshot.schema)
+      if (validation.errors.length > 0 || !validation.compiled) {
+        throw new Error(validation.errors.join('\n'))
+      }
+
+      taxSchemaState.activeSnapshotId = snapshot.id
+      activeTaxSchema = snapshot.schema
+      compiledActiveTaxSchema = validation.compiled
+      store.set('taxSchemaState', taxSchemaState)
+      store.set('taxSchema', activeTaxSchema)
       initialCalculationCache.clear()
 
-      return { success: true, taxSchema: validatedTaxSchema }
+      return { success: true, taxSchema: snapshot.schema }
+    } catch (error) {
+      if (error instanceof Error) return { success: false, error: error.message }
+      return { success: false, error: 'An unknown error occurred' }
+    }
+  }
+
+  const handleDiffTaxSchema = (
+    _,
+    payload: { nextYamlText: string }
+  ): { success: boolean; diff?: TaxSchemaDiffSummary; error?: string } => {
+    try {
+      const doc = parseDocument(payload.nextYamlText)
+      if (doc.errors.length > 0) {
+        throw new Error(doc.errors.map((error) => error.message).join('\n'))
+      }
+      const parsed = parseTaxSchemaUnknown(doc.toJS())
+      const normalized = normalizeTaxSchema(parsed)
+      const diff = diffAsJsonPointers(activeTaxSchema, normalized)
+      return { success: true, diff }
     } catch (error) {
       if (error instanceof Error) return { success: false, error: error.message }
       return { success: false, error: 'An unknown error occurred' }
@@ -259,8 +617,13 @@ app.whenReady().then((): void => {
 
   ipcMain.handle('get-tax-schema', handleGetTaxSchema)
   ipcMain.handle('getTaxSchema', handleGetTaxSchema)
+  ipcMain.handle('preview-tax-schema', handlePreviewTaxSchema)
+  ipcMain.handle('apply-tax-schema', handleApplyTaxSchema)
   ipcMain.handle('update-tax-schema', handleUpdateTaxSchema)
   ipcMain.handle('updateTaxSchema', handleUpdateTaxSchema)
+  ipcMain.handle('list-tax-schema-history', handleListTaxSchemaHistory)
+  ipcMain.handle('restore-tax-schema', handleRestoreTaxSchema)
+  ipcMain.handle('diff-tax-schema', handleDiffTaxSchema)
 
   ipcMain.handle(
     'calculate-prediction',
@@ -277,30 +640,37 @@ app.whenReady().then((): void => {
       }
     ): PredictionResult | { success: false; error: string } => {
       try {
-        const effectiveTaxSchema = taxSchemaOverride
-          ? taxSchemaSchema.parse(taxSchemaOverride)
-          : taxSchema
-        if (!effectiveTaxSchema) throw new Error('Tax schema is not loaded.')
+        const parsedScenario = scenarioSchema.parse(scenario)
+
+        let compiled = compiledActiveTaxSchema
+        let effectiveSchema = activeTaxSchema
+
+        if (taxSchemaOverride) {
+          const parsedOverride = parseTaxSchemaUnknown(taxSchemaOverride)
+          const normalizedOverride = normalizeTaxSchema(parsedOverride)
+          const validated = validateAndCompile(normalizedOverride)
+          if (validated.errors.length > 0 || !validated.compiled) {
+            throw new Error(validated.errors.join('\n'))
+          }
+          compiled = validated.compiled
+          effectiveSchema = normalizedOverride
+        }
 
         const cacheSource = {
           settings,
-          taxSchema: effectiveTaxSchema
+          taxSchema: effectiveSchema
         }
         const settingsString = JSON.stringify(cacheSource)
         const settingsHash = crypto.createHash('sha256').update(settingsString).digest('hex')
-        const cacheKey = `${scenario.id}-${settingsHash}`
+        const cacheKey = `${parsedScenario.id}-${settingsHash}`
 
         if (initialCalculationCache.has(cacheKey)) {
-          console.log(`Returning cached result for key: ${cacheKey}`)
-          const cachedResult = initialCalculationCache.get(cacheKey)!
-          return cachedResult
+          return initialCalculationCache.get(cacheKey)!
         }
 
-        const result = calculatePrediction({ scenario, settings }, effectiveTaxSchema)
+        const result = calculatePrediction({ scenario: parsedScenario, settings }, compiled)
 
         initialCalculationCache.set(cacheKey, result)
-        console.log(`Result cached with key: ${cacheKey}`)
-
         return result
       } catch (error) {
         console.error('Failed to calculate prediction:', error)

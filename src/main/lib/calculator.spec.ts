@@ -1,31 +1,24 @@
 import { describe, it, expect } from 'vitest'
 import { calculatePrediction } from './calculator'
-import type { Scenario, TaxSchema, GraphViewSettings } from '@myTypes/miraishi'
+import type { GraphViewSettings, Scenario, TaxSchemaV2 } from '@myTypes/miraishi'
+import { compileTaxSchemaV2 } from './taxSchemaEngine'
+import { defaultTaxSchemaV2 } from '../../shared/taxSchemaDefaults'
 
 // テスト用のダミー税制スキーマ
-const dummyTaxSchema: TaxSchema = {
-  version: '2025.1.0',
-  incomeTaxRates: [
-    { threshold: 1949000, rate: 0.05, deduction: 0 },
-    { threshold: 3299000, rate: 0.1, deduction: 97500 },
-    { threshold: 6949000, rate: 0.2, deduction: 427500 },
-    { threshold: 8999000, rate: 0.23, deduction: 636000 },
-    { threshold: 17999000, rate: 0.33, deduction: 1536000 },
-    { threshold: 39999000, rate: 0.4, deduction: 2796000 },
-    { threshold: null, rate: 0.45, deduction: 4796000 }
-  ],
-  residentTaxRate: 0.1,
-  socialInsurance: {
-    healthInsurance: { rate: 0.1, maxStandardRemuneration: 1390000 },
-    pension: { rate: 0.183, maxStandardRemuneration: 650000 },
-    employmentInsurance: { rate: 0.0055 }
-  },
-  deductions: {
-    basic: 480000, // 簡略化のため基礎控除のみ考慮
-    spouse: 380000,
-    dependent: 380000
-  }
-}
+const dummyTaxSchemaV2: TaxSchemaV2 = (() => {
+  const schema = defaultTaxSchemaV2()
+  schema.version = '2026.test'
+  schema.rules.socialInsurance.healthInsurance.rateMode = 'flat'
+  schema.rules.socialInsurance.healthInsurance.rate = 0.1
+  schema.rules.socialInsurance.employmentInsurance.employeeRateByIndustry.general = 0.0055
+  schema.rules.socialInsurance.employmentInsurance.employeeRateByIndustry.agricultureForestrySakeManufacturing =
+    0.0055
+  schema.rules.socialInsurance.employmentInsurance.employeeRateByIndustry.construction = 0.0055
+  schema.rules.deductions.basicByTotalIncome = [{ maxTotalIncome: null, amount: 480000 }]
+  return schema
+})()
+
+const compiledDummyTaxSchema = compileTaxSchemaV2(dummyTaxSchemaV2)
 
 // テスト用の基本設定
 const defaultSettings: GraphViewSettings = {
@@ -49,6 +42,10 @@ const baseScenario: Omit<Scenario, 'id' | 'createdAt' | 'updatedAt' | 'title'> =
     dependents: { hasSpouse: false, numberOfDependents: 0 },
     otherDeductions: [],
     previousYearIncome: 0
+  },
+  taxProfile: {
+    prefectureCode: 'tokyo',
+    industryCode: 'general'
   }
 }
 
@@ -61,7 +58,7 @@ describe('calculatePrediction', () => {
       createdAt: new Date(),
       updatedAt: new Date()
     }
-    const result = calculatePrediction({ scenario, settings: defaultSettings }, dummyTaxSchema)
+    const result = calculatePrediction({ scenario, settings: defaultSettings }, compiledDummyTaxSchema)
 
     // 1年目の額面年収 = 基本給30万 * 12ヶ月 + ボーナス60万 = 4,200,000円
     expect(result.details[0].grossAnnualIncome).toBeCloseTo(4200000, 0)
@@ -89,7 +86,7 @@ describe('calculatePrediction', () => {
       }
     }
 
-    const result = calculatePrediction({ scenario, settings: defaultSettings }, dummyTaxSchema)
+    const result = calculatePrediction({ scenario, settings: defaultSettings }, compiledDummyTaxSchema)
 
     // 1年目: 基本給360万 + ボーナス(30万×2)60万 = 420万
     expect(result.details[0].grossAnnualIncome).toBeCloseTo(4200000, 0)
@@ -110,7 +107,7 @@ describe('calculatePrediction', () => {
       updatedAt: new Date(),
       probation: { enabled: true, durationMonths: 3, basicSalary: 250000 }
     }
-    const result = calculatePrediction({ scenario, settings: defaultSettings }, dummyTaxSchema)
+    const result = calculatePrediction({ scenario, settings: defaultSettings }, compiledDummyTaxSchema)
 
     // 1年目の基本給 = (25万 * 3ヶ月) + (30万 * 9ヶ月) = 75万 + 270万 = 345万
     // 1年目の額面年収 = 345万 + ボーナス60万 = 405万
@@ -156,7 +153,7 @@ describe('calculatePrediction', () => {
         }
       ]
     }
-    const result = calculatePrediction({ scenario, settings: defaultSettings }, dummyTaxSchema)
+    const result = calculatePrediction({ scenario, settings: defaultSettings }, compiledDummyTaxSchema)
 
     // 1年目:
     // 基本給 = 360万
@@ -191,7 +188,7 @@ describe('calculatePrediction', () => {
       salaryGrowthRate: 100
     }
 
-    const result = calculatePrediction({ scenario, settings: defaultSettings }, dummyTaxSchema)
+    const result = calculatePrediction({ scenario, settings: defaultSettings }, compiledDummyTaxSchema)
 
     expect(result.details[0].breakdown.income.annualBasicSalary).toBeCloseTo(3600000, 0)
     expect(result.details[1].breakdown.income.annualBasicSalary).toBeCloseTo(7200000, 0)
@@ -211,7 +208,7 @@ describe('calculatePrediction', () => {
       }
     }
 
-    const result = calculatePrediction({ scenario, settings: defaultSettings }, dummyTaxSchema)
+    const result = calculatePrediction({ scenario, settings: defaultSettings }, compiledDummyTaxSchema)
 
     // 1年目: (30万 ÷ 160) × 1.25 × 20 × 12 = 562,500
     expect(result.details[0].breakdown.income.annualFixedOvertime).toBeCloseTo(562500, 0)
@@ -236,7 +233,7 @@ describe('calculatePrediction', () => {
       }
     }
 
-    const result = calculatePrediction({ scenario, settings: defaultSettings }, dummyTaxSchema)
+    const result = calculatePrediction({ scenario, settings: defaultSettings }, compiledDummyTaxSchema)
     const year1 = result.details[0]
     const year2 = result.details[1]
 
@@ -270,7 +267,7 @@ describe('calculatePrediction', () => {
       }
     }
 
-    const result = calculatePrediction({ scenario, settings: defaultSettings }, dummyTaxSchema)
+    const result = calculatePrediction({ scenario, settings: defaultSettings }, compiledDummyTaxSchema)
     const year1 = result.details[0]
 
     expect(year1.breakdown.deductions.residentTax).toBe(0)

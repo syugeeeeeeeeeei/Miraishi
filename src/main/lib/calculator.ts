@@ -1,27 +1,51 @@
 /**
  * @file src/main/lib/calculator.ts
- * @description 給与予測計算エンジンのコアロジック (最適化版)
+ * @description 給与予測計算エンジンのコアロジック (DSL対応版)
  */
 import type {
   AnnualSalaryDetail,
+  CompiledTaxSchemaV2,
   GraphViewSettings,
   PredictionResult,
-  Scenario,
-  TaxSchema
+  Scenario
 } from '@myTypes/miraishi'
+import { evaluateCompiledFormula } from './taxSchemaEngine'
+
+const resolveAllowanceActiveMonths = (
+  duration: { type: 'unlimited' } | { type: 'years'; value: number } | { type: 'months'; value: number },
+  year: number
+): number => {
+  if (duration.type === 'unlimited') {
+    return 12
+  }
+  if (duration.type === 'years') {
+    return year <= duration.value ? 12 : 0
+  }
+
+  const startMonth = (year - 1) * 12 + 1
+  const endMonth = year * 12
+  const activeEnd = Math.min(endMonth, duration.value)
+  if (activeEnd < startMonth) {
+    return 0
+  }
+  return Math.max(0, activeEnd - startMonth + 1)
+}
+
+const toRounded = (value: number): number => Math.round(Number.isFinite(value) ? value : 0)
 
 export function calculatePrediction(
   { scenario, settings }: { scenario: Scenario; settings: GraphViewSettings },
-  taxSchema: TaxSchema
+  compiledTaxSchema: CompiledTaxSchemaV2
 ): PredictionResult {
+  const schema = compiledTaxSchema.schema
   const details: AnnualSalaryDetail[] = []
+
   let currentBasicSalary = scenario.initialBasicSalary
   let previousYearTaxableIncomeForResidentTax = Math.max(
     0,
     scenario.deductions?.previousYearIncome ?? 0
   )
 
-  // --- 🔽 最適化: 事前計算 🔽 ---
   const monthlyAllowancesForOvertime = (scenario.allowances ?? []).reduce((total, allowance) => {
     if (allowance.type === 'fixed') {
       return total + allowance.amount
@@ -29,203 +53,184 @@ export function calculatePrediction(
     return total
   }, 0)
 
-  const fixedAnnualAllowances = (scenario.allowances ?? []).reduce((total, allowance) => {
-    if (allowance.type === 'fixed' && allowance.duration.type === 'unlimited') {
-      return total + allowance.amount * 12
-    }
-    return total
-  }, 0)
-  // --- 🔼 最適化: 事前計算 🔼 ---
-
-  for (let year = 1; year <= settings.predictionPeriod; year++) {
-    let annualBasicSalary: number
-    let annualAllowances: number
-    let annualFixedOvertime: number
-    let annualVariableOvertime: number
-    let annualBonusCalculated: number
-    let grossAnnualIncome: number
+  for (let year = 1; year <= settings.predictionPeriod; year += 1) {
     const isProbationApplied = year === 1 && Boolean(scenario.probation?.enabled)
-    const probationMonths = isProbationApplied ? (scenario.probation?.durationMonths ?? 0) : 0
+    const probationMonths = isProbationApplied ? Math.min(12, scenario.probation?.durationMonths ?? 0) : 0
     const bonusMode = scenario.bonus?.mode ?? 'fixed'
     const bonusMonths = scenario.bonus?.months ?? 2
     const fixedOvertimePremiumRate = 1.25
 
-    // --- 🔽 最適化: 残業代計算を効率化 🔽 ---
-    let monthlySalaryForOvertimeCalc: number
+    let annualBasicSalary = 0
     if (isProbationApplied) {
-      const afterProbationMonths = 12 - probationMonths
-      const probSalary = (scenario.probation.basicSalary ?? 0) * probationMonths
-      const afterProbSalary = (scenario.initialBasicSalary ?? 0) * afterProbationMonths
-      monthlySalaryForOvertimeCalc =
-        (probSalary + afterProbSalary) / 12 + monthlyAllowancesForOvertime
+      for (let month = 1; month <= 12; month += 1) {
+        annualBasicSalary +=
+          month <= probationMonths ? (scenario.probation.basicSalary ?? 0) : (scenario.initialBasicSalary ?? 0)
+      }
     } else {
-      monthlySalaryForOvertimeCalc = currentBasicSalary + monthlyAllowancesForOvertime
+      annualBasicSalary = currentBasicSalary * 12
     }
+
+    const monthlySalaryForOvertimeCalc = isProbationApplied
+      ? ((scenario.probation.basicSalary ?? 0) * probationMonths +
+          (scenario.initialBasicSalary ?? 0) * (12 - probationMonths)) /
+          12 +
+        monthlyAllowancesForOvertime
+      : currentBasicSalary + monthlyAllowancesForOvertime
 
     const hourlyWage = monthlySalaryForOvertimeCalc / 160
     const fixedHours = scenario.overtime?.fixedOvertime?.enabled
       ? (scenario.overtime.fixedOvertime.hours ?? 0)
       : 0
-    const overtimeHours = Math.max(0, settings.averageOvertimeHours - fixedHours)
-    annualVariableOvertime = hourlyWage * fixedOvertimePremiumRate * overtimeHours * 12
-    // --- 🔼 最適化: 残業代計算を効率化 🔼 ---
 
-    if (isProbationApplied) {
-      let totalBasicSalaryForYear1 = 0
+    const overtimeHours = scenario.overtime?.variableOvertime?.enabled
+      ? Math.max(0, settings.averageOvertimeHours - fixedHours)
+      : 0
 
-      for (let month = 1; month <= 12; month++) {
-        if (month <= probationMonths) {
-          totalBasicSalaryForYear1 += scenario.probation.basicSalary ?? 0
-        } else {
-          totalBasicSalaryForYear1 += scenario.initialBasicSalary ?? 0
-        }
-      }
-      annualBasicSalary = totalBasicSalaryForYear1
-    } else {
-      annualBasicSalary = currentBasicSalary * 12
-    }
+    const rawAnnualVariableOvertime = hourlyWage * fixedOvertimePremiumRate * overtimeHours * 12
 
-    // 固定残業代は「基本給連動」のみを採用
+    let rawAnnualFixedOvertime = 0
     if (fixedHours > 0) {
       if (isProbationApplied) {
-        let totalFixedOvertimeForYear1 = 0
-        for (let month = 1; month <= 12; month++) {
+        for (let month = 1; month <= 12; month += 1) {
           const monthlyBasicSalaryForFixedOvertime =
-            month <= probationMonths
-              ? (scenario.probation.basicSalary ?? 0)
-              : (scenario.initialBasicSalary ?? 0)
+            month <= probationMonths ? (scenario.probation.basicSalary ?? 0) : (scenario.initialBasicSalary ?? 0)
           const monthlyBaseForFixedOvertime =
             monthlyBasicSalaryForFixedOvertime + monthlyAllowancesForOvertime
-          totalFixedOvertimeForYear1 +=
+          rawAnnualFixedOvertime +=
             (monthlyBaseForFixedOvertime / 160) * fixedOvertimePremiumRate * fixedHours
         }
-        annualFixedOvertime = totalFixedOvertimeForYear1
       } else {
         const monthlyBaseForFixedOvertime = currentBasicSalary + monthlyAllowancesForOvertime
-        annualFixedOvertime =
+        rawAnnualFixedOvertime =
           (monthlyBaseForFixedOvertime / 160) * fixedOvertimePremiumRate * fixedHours * 12
       }
-    } else {
-      annualFixedOvertime = 0
     }
 
-    const monthlyBasicSalaryForBonus = annualBasicSalary / 12
-    annualBonusCalculated =
-      bonusMode === 'basicSalaryMonths'
-        ? monthlyBasicSalaryForBonus * bonusMonths
-        : (scenario.annualBonus ?? 0)
+    const rawAnnualBonus =
+      bonusMode === 'basicSalaryMonths' ? (annualBasicSalary / 12) * bonusMonths : (scenario.annualBonus ?? 0)
 
-    // --- 🔽 最適化: 手当計算を効率化 🔽 ---
-    // 事前計算した固定手当をベースに、期間や割合が変動するものだけをループ内で計算
-    annualAllowances =
-      fixedAnnualAllowances +
-      (scenario.allowances ?? []).reduce((total, allowance) => {
-        let isAllowanceActive = false
-        if (allowance.duration.type !== 'unlimited') {
-          switch (allowance.duration.type) {
-            case 'years':
-              if (year <= allowance.duration.value) isAllowanceActive = true
-              break
-            case 'months':
-              if (year * 12 <= allowance.duration.value) isAllowanceActive = true
-              break
-          }
-        }
-
-        if (isAllowanceActive && allowance.type === 'fixed') {
-          return total + allowance.amount * 12
-        }
-        if (allowance.type === 'percentage') {
-          // 割合ベースは毎年計算が必要
-          return total + annualBasicSalary * (allowance.amount / 100)
-        }
+    const rawAnnualAllowances = (scenario.allowances ?? []).reduce((total, allowance) => {
+      const activeMonths = resolveAllowanceActiveMonths(allowance.duration, year)
+      if (activeMonths <= 0) {
         return total
-      }, 0)
-    // --- 🔼 最適化: 手当計算を効率化 🔼 ---
+      }
 
-    grossAnnualIncome =
-      annualBasicSalary +
-      annualFixedOvertime +
-      annualAllowances +
-      annualBonusCalculated +
-      annualVariableOvertime
+      if (allowance.type === 'fixed') {
+        return total + allowance.amount * activeMonths
+      }
 
-    // ... (以降の控除額、税金計算は変更なし) ...
-    const monthlyGrossIncome = grossAnnualIncome / 12
-    const standardMonthlyRemuneration = Math.min(
-      Math.round(monthlyGrossIncome / 1000) * 1000,
-      taxSchema.socialInsurance.healthInsurance.maxStandardRemuneration
-    )
+      // 割合手当も期間比率で按分して適用
+      return total + annualBasicSalary * (allowance.amount / 100) * (activeMonths / 12)
+    }, 0)
 
-    const healthInsurance =
-      standardMonthlyRemuneration * (taxSchema.socialInsurance.healthInsurance.rate / 2) * 12
-    const pensionInsurance =
-      Math.min(
-        standardMonthlyRemuneration,
-        taxSchema.socialInsurance.pension.maxStandardRemuneration
-      ) *
-      (taxSchema.socialInsurance.pension.rate / 2) *
-      12
+    const healthInsuranceRateRaw =
+      schema.rules.socialInsurance.healthInsurance.rateMode === 'flat'
+        ? schema.rules.socialInsurance.healthInsurance.rate ?? 0
+        : schema.rules.socialInsurance.healthInsurance.rateByPrefecture[
+            scenario.taxProfile?.prefectureCode ?? ''
+          ] ??
+          schema.rules.socialInsurance.healthInsurance.rateByPrefecture['tokyo'] ??
+          0
 
-    const employmentInsurance =
-      grossAnnualIncome * taxSchema.socialInsurance.employmentInsurance.rate
-    const socialInsuranceTotal = healthInsurance + pensionInsurance + employmentInsurance
+    const healthInsuranceRateEmployee = healthInsuranceRateRaw / 2
+    const pensionRateEmployee = schema.rules.socialInsurance.pension.rate / 2
 
-    const basicDeduction = taxSchema.deductions.basic ?? 0
-    const spouseDeduction = taxSchema.deductions.spouse ?? 0
+    const employmentInsuranceRateEmployee =
+      schema.rules.socialInsurance.employmentInsurance.employeeRateByIndustry[
+        scenario.taxProfile?.industryCode ?? ''
+      ] ?? schema.rules.socialInsurance.employmentInsurance.employeeRateByIndustry.general ?? 0
+
     const spouseDeductionApplied = Boolean(scenario.deductions?.dependents?.hasSpouse)
-    const dependentDeductionPerPerson = taxSchema.deductions.dependent ?? 0
     const numberOfDependents = scenario.deductions?.dependents?.numberOfDependents ?? 0
     const otherDeductionsTotal = (scenario.deductions?.otherDeductions ?? []).reduce(
       (sum, d) => sum + d.amount,
       0
     )
-    let totalIncomeDeductions = basicDeduction + socialInsuranceTotal
-    if (spouseDeductionApplied) {
-      totalIncomeDeductions += spouseDeduction
-    }
-    totalIncomeDeductions += numberOfDependents * dependentDeductionPerPerson
-    totalIncomeDeductions += otherDeductionsTotal
 
-    const taxableIncome = Math.max(0, grossAnnualIncome - totalIncomeDeductions)
+    const residentTaxBaseIncome = previousYearTaxableIncomeForResidentTax
+    const residentTaxBaseSource =
+      year === 1 ? 'previousYearInput' : 'previousSimulationYearTaxableIncome'
+
+    const growthMultiplier = 1 + (scenario.salaryGrowthRate ?? 0) / 100
+    const baseSalaryForGrowth = isProbationApplied ? scenario.initialBasicSalary : currentBasicSalary
+
+    const runtimeVars: Record<string, unknown> = {
+      rawAnnualBasicSalary: annualBasicSalary,
+      rawAnnualFixedOvertime,
+      rawAnnualVariableOvertime,
+      rawAnnualAllowances,
+      rawAnnualBonus,
+      healthInsuranceMaxStandardRemuneration:
+        schema.rules.socialInsurance.healthInsurance.maxStandardRemuneration,
+      healthInsuranceRateEmployee,
+      pensionMaxStandardRemuneration: schema.rules.socialInsurance.pension.maxStandardRemuneration,
+      pensionRateEmployee,
+      employmentInsuranceRateEmployee,
+      totalIncomeForBasicDeduction:
+        annualBasicSalary + rawAnnualAllowances + rawAnnualBonus + rawAnnualFixedOvertime + rawAnnualVariableOvertime,
+      basicByTotalIncome: schema.rules.deductions.basicByTotalIncome,
+      spouseDeductionAppliedFlag: spouseDeductionApplied ? 1 : 0,
+      spouseDeductionAmount: schema.rules.deductions.spouse,
+      numberOfDependents,
+      dependentDeductionPerPerson: schema.rules.deductions.dependent,
+      otherDeductionsTotal,
+      incomeTaxRates: schema.rules.incomeTaxRates,
+      reconstructionSpecialIncomeTaxRate: schema.rules.reconstructionSpecialIncomeTaxRate,
+      residentTaxBaseIncome,
+      residentTaxRate: schema.rules.residentTaxRate,
+      baseSalaryForGrowth,
+      salaryGrowthRatePercent: scenario.salaryGrowthRate ?? 0
+    }
+
+    const outputs = evaluateCompiledFormula(compiledTaxSchema, runtimeVars)
+
+    const grossAnnualIncome = outputs['income.grossAnnualIncome']
+    const healthInsurance = outputs['insurance.health']
+    const pensionInsurance = outputs['insurance.pension']
+    const employmentInsurance = outputs['insurance.employment']
+    const incomeTax = outputs['taxes.income']
+    const reconstructionSpecialIncomeTax = outputs['taxes.reconstruction']
+    const residentTax = outputs['taxes.resident']
+    const taxableIncome = outputs['taxableIncome']
+    const totalDeductions = outputs['totals.totalDeductions']
+    const netAnnualIncome = outputs['totals.netAnnualIncome']
+    const nextYearMonthlyBasicSalary = outputs['projection.nextYearMonthlyBasicSalary']
+
+    const monthlyGrossIncome = grossAnnualIncome / 12
+    const standardMonthlyRemuneration = Math.min(
+      Math.round(monthlyGrossIncome / 1000) * 1000,
+      schema.rules.socialInsurance.healthInsurance.maxStandardRemuneration
+    )
+    const socialInsuranceTotal = healthInsurance + pensionInsurance + employmentInsurance
+    const totalIncomeDeductions = Math.max(0, grossAnnualIncome - taxableIncome)
 
     const incomeTaxRule =
-      taxSchema.incomeTaxRates.find((r) => taxableIncome <= (r.threshold ?? Infinity)) ?? {
+      schema.rules.incomeTaxRates.find((r) => taxableIncome <= (r.threshold ?? Infinity)) ?? {
         threshold: null,
         rate: 0,
         deduction: 0
       }
-    const incomeTax = Math.max(0, taxableIncome * incomeTaxRule.rate - incomeTaxRule.deduction)
-    const residentTaxBaseIncome = previousYearTaxableIncomeForResidentTax
-    const residentTaxBaseSource =
-      year === 1 ? 'previousYearInput' : 'previousSimulationYearTaxableIncome'
-    const residentTax = residentTaxBaseIncome * taxSchema.residentTaxRate
-
-    const totalDeductions = socialInsuranceTotal + incomeTax + residentTax
-    const netAnnualIncome = grossAnnualIncome - totalDeductions
-    const growthMultiplier = 1 + (scenario.salaryGrowthRate ?? 0) / 100
-    const baseSalaryForGrowth = isProbationApplied ? scenario.initialBasicSalary : currentBasicSalary
-    const nextYearMonthlyBasicSalary = baseSalaryForGrowth * growthMultiplier
 
     details.push({
       year,
-      grossAnnualIncome: Math.round(grossAnnualIncome),
-      netAnnualIncome: Math.round(netAnnualIncome),
-      totalDeductions: Math.round(totalDeductions),
+      grossAnnualIncome: toRounded(grossAnnualIncome),
+      netAnnualIncome: toRounded(netAnnualIncome),
+      totalDeductions: toRounded(totalDeductions),
       breakdown: {
         income: {
-          annualBasicSalary: Math.round(annualBasicSalary),
-          annualAllowances: Math.round(annualAllowances),
-          annualBonus: Math.round(annualBonusCalculated),
-          annualFixedOvertime: Math.round(annualFixedOvertime),
-          annualVariableOvertime: Math.round(annualVariableOvertime)
+          annualBasicSalary: toRounded(outputs['income.annualBasicSalary']),
+          annualAllowances: toRounded(outputs['income.annualAllowances']),
+          annualBonus: toRounded(outputs['income.annualBonus']),
+          annualFixedOvertime: toRounded(outputs['income.annualFixedOvertime']),
+          annualVariableOvertime: toRounded(outputs['income.annualVariableOvertime'])
         },
         deductions: {
-          healthInsurance: Math.round(healthInsurance),
-          pensionInsurance: Math.round(pensionInsurance),
-          employmentInsurance: Math.round(employmentInsurance),
-          incomeTax: Math.round(incomeTax),
-          residentTax: Math.round(residentTax)
+          healthInsurance: toRounded(healthInsurance),
+          pensionInsurance: toRounded(pensionInsurance),
+          employmentInsurance: toRounded(employmentInsurance),
+          incomeTax: toRounded(incomeTax),
+          reconstructionSpecialIncomeTax: toRounded(reconstructionSpecialIncomeTax),
+          residentTax: toRounded(residentTax)
         }
       },
       calculationTrace: {
@@ -236,15 +241,16 @@ export function calculatePrediction(
           averageOvertimeHours: settings.averageOvertimeHours,
           fixedOvertimeHours: fixedHours,
           overtimePremiumRate: fixedOvertimePremiumRate,
-          healthInsuranceRate: taxSchema.socialInsurance.healthInsurance.rate / 2,
-          pensionInsuranceRate: taxSchema.socialInsurance.pension.rate / 2,
-          employmentInsuranceRate: taxSchema.socialInsurance.employmentInsurance.rate,
-          residentTaxRate: taxSchema.residentTaxRate
+          healthInsuranceRate: healthInsuranceRateEmployee,
+          pensionInsuranceRate: pensionRateEmployee,
+          employmentInsuranceRate: employmentInsuranceRateEmployee,
+          residentTaxRate: schema.rules.residentTaxRate,
+          reconstructionSpecialIncomeTaxRate: schema.rules.reconstructionSpecialIncomeTaxRate
         },
         intermediate: {
           isProbationApplied,
           probationMonths,
-          monthlyBasicSalaryForBonus,
+          monthlyBasicSalaryForBonus: annualBasicSalary / 12,
           monthlySalaryForOvertimeCalc,
           hourlyWage,
           overtimeHours,
@@ -253,14 +259,15 @@ export function calculatePrediction(
           socialInsuranceTotal,
           totalIncomeDeductions,
           taxableIncome,
+          totalIncomeForBasicDeduction: grossAnnualIncome,
           residentTaxBaseIncome,
           residentTaxBaseSource
         },
         deductionRules: {
-          basicDeduction,
-          spouseDeduction,
+          basicDeduction: outputs['deductions.basic'],
+          spouseDeduction: schema.rules.deductions.spouse,
           spouseDeductionApplied,
-          dependentDeductionPerPerson,
+          dependentDeductionPerPerson: schema.rules.deductions.dependent,
           numberOfDependents,
           otherDeductionsTotal
         },

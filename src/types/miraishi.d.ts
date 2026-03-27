@@ -3,236 +3,261 @@
  * @description アプリケーション「未来視」で使用される主要な型定義
  */
 
-/**
- * 手当の支給期間を定義します。
- * - `unlimited`: 無期限
- * - `years`: 年単位で指定
- * - `months`: 月単位で指定
- */
 export type Duration =
   | { type: 'unlimited' }
   | { type: 'years'; value: number }
   | { type: 'months'; value: number }
 
-/**
- * 各種手当の詳細を定義します。
- */
 export type Allowance = {
-  /** 手当を一位に識別するID */
   id: string
-  /** 手当の名称 (例: 「住宅手当」) */
   name: string
-  /**
-   * 手当の種別
-   * - `fixed`: 固定額
-   * - `percentage`: 基本給に対する割合
-   */
   type: 'fixed' | 'percentage'
-  /** 手当の金額（円）または割合（例: 0.05） */
   amount: number
-  /** 手当の支給期間 */
   duration: Duration
 }
 
-/**
- * 固定残業代の詳細を定義します。
- */
 export type FixedOvertime = {
-  /** 固定残業代制度の有無 */
   enabled: boolean
-  /** みなし固定残業時間（h/月） */
   hours: number
 }
 
-/**
- * 変動残業代（時間外手当）の詳細を定義します。
- */
 export type VariableOvertime = {
-  /** 変動残業代の有無 */
   enabled: boolean
-  /**
-   * 残業単価の計算方法。
-   * @todo 将来的な拡張性のためのフィールド
-   */
   calculationMethod: string
 }
 
-/**
- * 残業代に関する設定を定義します。
- */
 export type Overtime = {
-  /** 固定残業代 */
   fixedOvertime: FixedOvertime
-  /** 変動残業代 */
   variableOvertime: VariableOvertime
 }
 
-/**
- * ボーナスの計算モードを定義します。
- */
 export type Bonus = {
-  /**
-   * ボーナス計算モード
-   * - `fixed`: 固定額
-   * - `basicSalaryMonths`: 基本給の○ヶ月分
-   */
   mode: 'fixed' | 'basicSalaryMonths'
-  /** 基本給連動時の支給月数 */
   months: number
 }
 
-/**
- * 試用期間に関する設定を定義します。
- */
 export type Probation = {
-  /** 試用期間の有無 */
   enabled: boolean
-  /** 試用期間の月数 */
   durationMonths: number
-  /** 期間中の基本給（月額） */
   basicSalary: number
 }
 
-/**
- * 扶養家族に関する情報を定義します。
- */
 export type Dependents = {
-  /** 配偶者の有無 */
   hasSpouse: boolean
-  /** 配偶者以外の扶養家族の人数 */
   numberOfDependents: number
 }
 
-/**
- * iDeCoや生命保険料控除など、個別の控除項目を定義します。
- */
 export type OtherDeduction = {
-  /** 控除項目を一位に識別するID */
   id: string
-  /** 控除の名称 (例: 「iDeCo」) */
   name: string
-  /** 年間の控除額 */
   amount: number
 }
 
-/**
- * 税金計算に影響する控除関連の情報を定義します。
- */
 export type Deductions = {
-  /** 扶養家族の情報 */
   dependents: Dependents
-  /** その他の控除項目（iDeCoなど）の配列 */
   otherDeductions: OtherDeduction[]
-  /** 前年度収入（住民税計算用。新卒など前年度収入がない場合は0） */
   previousYearIncome?: number
 }
 
-/**
- * シミュレーションの単位となるシナリオの全情報を定義します。
- */
+export type TaxProfile = {
+  prefectureCode: string
+  industryCode: string
+}
+
 export type Scenario = {
-  /** シナリオを一位に識別するID */
   id: string
-  /** ユーザーが設定するシナリオの名称 */
   title: string
-  /** シミュレーション開始時の想定初任給（月額） */
   initialBasicSalary: number
-  /** 手当の配列 */
   allowances: Allowance[]
-  /** 残業代の設定 */
   overtime: Overtime
-  /** 年間のボーナス支給額（固定モード時に使用） */
   annualBonus: number
-  /** ボーナス計算モード（未指定時は固定額扱い） */
   bonus?: Bonus
-  /** 試用期間の設定 */
   probation: Probation
-  /** 年間の給与成長率（%） */
   salaryGrowthRate: number
-  /** 控除関連の設定 */
   deductions: Deductions
-  /** シナリオの作成日時 */
+  taxProfile: TaxProfile
   createdAt: Date
-  /** シナリオの最終更新日時 */
   updatedAt: Date
 }
 
-// --- 税制スキーマ関連の型定義 ---
-
-/**
- * 所得税の税率テーブルの一行を定義します。
- */
 export type IncomeTaxRate = {
-  /** 課税所得の閾値（この額まで）。nullの場合は上限なしを表す */
   threshold: number | null
-  /** 税率 */
   rate: number
-  /** 控除額 */
   deduction: number
 }
 
-/**
- * 法改正に対応するための税制スキーマ全体を定義します。
- * このデータは外部JSONファイルとして管理されます。
- */
-export type TaxSchema = {
-  /** スキーマのバージョン */
+export type TaxSchemaV1 = {
   version: string
-  /** 所得税の速算表 */
   incomeTaxRates: IncomeTaxRate[]
-  /** 住民税の標準税率 */
   residentTaxRate: number
-  /** 社会保険料率 */
   socialInsurance: {
     healthInsurance: { rate: number; maxStandardRemuneration: number }
     pension: { rate: number; maxStandardRemuneration: number }
     employmentInsurance: { rate: number }
   }
-  /** 各種所得控除額 */
   deductions: {
     basic: number
     spouse: number
     dependent: number
   }
 }
-// --- ビュー（UI状態）関連の型定義 ---
 
-/**
- * グラフビューの表示設定を定義します。
- */
+export type BasicDeductionTableRow = {
+  maxTotalIncome: number | null
+  amount: number
+}
+
+export type TaxSchemaV2 = {
+  schemaVersion: '2.0'
+  version: string
+  effectiveFrom: string
+  effectiveTo: string | null
+  rules: {
+    incomeTaxRates: IncomeTaxRate[]
+    reconstructionSpecialIncomeTaxRate: number
+    residentTaxRate: number
+    socialInsurance: {
+      healthInsurance: {
+        rateMode: 'flat' | 'prefecture'
+        rate: number | null
+        rateByPrefecture: Record<string, number>
+        maxStandardRemuneration: number
+      }
+      pension: {
+        rate: number
+        maxStandardRemuneration: number
+      }
+      employmentInsurance: {
+        employeeRateByIndustry: Record<string, number>
+      }
+    }
+    deductions: {
+      basicByTotalIncome: BasicDeductionTableRow[]
+      spouse: number
+      dependent: number
+    }
+  }
+  formula: {
+    steps: FormulaStep[]
+  }
+  uiMeta: {
+    labels: Record<string, string>
+    descriptions: Record<string, string>
+  }
+}
+
+export type TaxSchema = TaxSchemaV1 | TaxSchemaV2
+
+export type FormulaStepId =
+  | 'income.annualBasicSalary'
+  | 'income.annualFixedOvertime'
+  | 'income.annualVariableOvertime'
+  | 'income.annualAllowances'
+  | 'income.annualBonus'
+  | 'income.grossAnnualIncome'
+  | 'insurance.health'
+  | 'insurance.pension'
+  | 'insurance.employment'
+  | 'deductions.basic'
+  | 'deductions.spouse'
+  | 'deductions.dependent'
+  | 'deductions.otherTotal'
+  | 'taxableIncome'
+  | 'taxes.income'
+  | 'taxes.reconstruction'
+  | 'taxes.resident'
+  | 'totals.totalDeductions'
+  | 'totals.netAnnualIncome'
+  | 'projection.nextYearMonthlyBasicSalary'
+
+export type FormulaExpression =
+  | { op: 'const'; value: number }
+  | { op: 'var'; name: string }
+  | { op: 'add' | 'sub' | 'mul' | 'div' | 'min' | 'max'; args: FormulaExpression[] }
+  | { op: 'round'; value: FormulaExpression; digits: number }
+  | {
+      op: 'if'
+      condition: FormulaExpression
+      then: FormulaExpression
+      else: FormulaExpression
+    }
+  | { op: 'clamp'; value: FormulaExpression; min: FormulaExpression; max: FormulaExpression }
+  | {
+      op: 'bracketLookup'
+      value: FormulaExpression
+      tableVar: string
+      thresholdKey: string
+      targetKey: string
+      defaultValue?: FormulaExpression
+    }
+  | {
+      op: 'tableLookup'
+      key: FormulaExpression
+      tableVar: string
+      defaultValue?: FormulaExpression
+    }
+
+export type FormulaStep = {
+  id: FormulaStepId
+  expr: FormulaExpression
+}
+
+export type CompiledFormulaStep = {
+  id: FormulaStepId
+  expr: FormulaExpression
+  deps: FormulaStepId[]
+}
+
+export type CompiledTaxSchemaV2 = {
+  schema: TaxSchemaV2
+  stepOrder: FormulaStepId[]
+  stepMap: Partial<Record<FormulaStepId, CompiledFormulaStep>>
+}
+
+export type TaxSchemaSnapshot = {
+  id: string
+  hash: string
+  schemaVersion: string
+  lawVersion: string
+  createdAt: string
+  note: string
+  schema: TaxSchemaV2
+}
+
+export type TaxSchemaState = {
+  activeSnapshotId: string | null
+  snapshots: TaxSchemaSnapshot[]
+  legacyBackups: TaxSchemaV1[]
+}
+
+export type TaxSchemaDiffSummary = {
+  added: string[]
+  removed: string[]
+  changed: string[]
+  totalChanges: number
+}
+
+export type SchemaValidationReport = {
+  isValid: boolean
+  errors: string[]
+  warnings: string[]
+  normalizedSchema?: TaxSchemaV2
+  diffSummary?: TaxSchemaDiffSummary
+}
+
 export type GraphViewSettings = {
-  /** 予測期間（年数） */
   predictionPeriod: number
-  /** 予測に用いる月平均残業時間 */
   averageOvertimeHours: number
-  /**
-   * グラフの表示項目
-   * - `grossAnnual`: 年収（額面）
-   * - `netAnnual`: 年収（手取り）
-   * - `monthlyGross`: 月収（額面）
-   * - `monthlyNet`: 月収（手取り）
-   */
   displayItem: ('grossAnnual' | 'netAnnual' | 'monthlyGross' | 'monthlyNet')[]
 }
 
-/**
- * アプリケーション全体のUI状態を定義します。
- * Jotaiなどの状態管理ライブラリで管理されることを想定。
- */
 export type ViewState = {
-  /** メインパネルに表示されているシナリオのIDリスト */
   activeScenarioIds: string[]
-  /** グラフビューの設定 */
   graphViewSettings: GraphViewSettings
-  /** コントロールパネルの表示状態 */
   isControlPanelOpen: boolean
-  /** グラフビューのフロート表示状態 */
   isGraphViewVisible: boolean
 }
 
-/**
- * 予測される年間の給与詳細
- */
 export interface AnnualSalaryDetail {
   year: number
   grossAnnualIncome: number
@@ -252,13 +277,11 @@ export interface AnnualSalaryDetail {
       pensionInsurance: number
       employmentInsurance: number
       incomeTax: number
+      reconstructionSpecialIncomeTax: number
       residentTax: number
     }
   }
 
-  /**
-   * 計算フロー可視化用の中間値・ルール情報
-   */
   calculationTrace: {
     rules: {
       salaryGrowthRatePercent: number
@@ -271,6 +294,7 @@ export interface AnnualSalaryDetail {
       pensionInsuranceRate: number
       employmentInsuranceRate: number
       residentTaxRate: number
+      reconstructionSpecialIncomeTaxRate: number
     }
     intermediate: {
       isProbationApplied: boolean
@@ -284,6 +308,7 @@ export interface AnnualSalaryDetail {
       socialInsuranceTotal: number
       totalIncomeDeductions: number
       taxableIncome: number
+      totalIncomeForBasicDeduction: number
       residentTaxBaseIncome: number
       residentTaxBaseSource: 'previousYearInput' | 'previousSimulationYearTaxableIncome'
     }
@@ -308,9 +333,6 @@ export interface AnnualSalaryDetail {
   }
 }
 
-/**
- * 予測結果の全体構造
- */
 export interface PredictionResult {
   details: AnnualSalaryDetail[]
 }

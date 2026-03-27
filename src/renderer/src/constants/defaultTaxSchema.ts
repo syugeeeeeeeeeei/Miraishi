@@ -1,33 +1,4 @@
-import type { TaxSchema } from '@myTypes/miraishi'
+import type { TaxSchemaV2 } from '@myTypes/miraishi'
+import { defaultTaxSchemaV2 } from '../../../shared/taxSchemaDefaults'
 
-export const defaultTaxSchema: TaxSchema = {
-  version: '2025.1.0',
-  incomeTaxRates: [
-    { threshold: 1949000, rate: 0.05, deduction: 0 },
-    { threshold: 3299000, rate: 0.1, deduction: 97500 },
-    { threshold: 6949000, rate: 0.2, deduction: 427500 },
-    { threshold: 8999000, rate: 0.23, deduction: 636000 },
-    { threshold: 17999000, rate: 0.33, deduction: 1536000 },
-    { threshold: 39999000, rate: 0.4, deduction: 2796000 },
-    { threshold: null, rate: 0.45, deduction: 4796000 }
-  ],
-  residentTaxRate: 0.1,
-  socialInsurance: {
-    healthInsurance: {
-      rate: 0.1,
-      maxStandardRemuneration: 1390000
-    },
-    pension: {
-      rate: 0.183,
-      maxStandardRemuneration: 650000
-    },
-    employmentInsurance: {
-      rate: 0.0055
-    }
-  },
-  deductions: {
-    basic: 950000,
-    spouse: 380000,
-    dependent: 380000
-  }
-}
+export const defaultTaxSchema: TaxSchemaV2 = defaultTaxSchemaV2()

@@ -21,6 +21,7 @@ import {
 } from '@chakra-ui/react'
 import { FaPlus, FaTrash } from 'react-icons/fa'
 import type { Scenario } from '@myTypes/miraishi'
+import { INDUSTRY_OPTIONS, PREFECTURE_OPTIONS } from '../../../../shared/taxSchemaDefaults'
 
 interface ScenarioInputFormProps {
   scenario: Scenario
@@ -368,6 +369,42 @@ export const ScenarioInputForm = ({
                 >
                   <NumberInputField onKeyDown={handleKeyDown} bg="white" inputMode="numeric" />
                 </NumberInput>
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize={LABEL_FONT_SIZE}>勤務都道府県</FormLabel>
+                <Select
+                  size={CONTROL_SIZE}
+                  value={scenario.taxProfile?.prefectureCode ?? ''}
+                  onChange={(e): void =>
+                    updateNestedState('taxProfile.prefectureCode', e.target.value)
+                  }
+                  bg="white"
+                >
+                  {PREFECTURE_OPTIONS.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl>
+                <FormLabel fontSize={LABEL_FONT_SIZE}>業種（雇用保険率）</FormLabel>
+                <Select
+                  size={CONTROL_SIZE}
+                  value={scenario.taxProfile?.industryCode ?? ''}
+                  onChange={(e): void =>
+                    updateNestedState('taxProfile.industryCode', e.target.value)
+                  }
+                  bg="white"
+                >
+                  {INDUSTRY_OPTIONS.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.label}
+                    </option>
+                  ))}
+                </Select>
               </FormControl>
             </VStack>
           </VStack>
