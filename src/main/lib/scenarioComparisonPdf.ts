@@ -47,6 +47,20 @@ type TrendPoint = {
   y: number
 }
 
+type TrendDomain = {
+  min: number
+  max: number
+}
+
+type TrendPlotArea = {
+  left: number
+  right: number
+  top: number
+  bottom: number
+}
+
+type AnnualDetail = PredictionResult['details'][number]
+
 const PREFECTURE_LABEL_MAP = new Map(PREFECTURE_OPTIONS.map((option) => [option.code, option.label]))
 const INDUSTRY_LABEL_MAP = new Map(INDUSTRY_OPTIONS.map((option) => [option.code, option.label]))
 
@@ -102,6 +116,17 @@ const chunkArray = <T>(items: T[], chunkSize: number): T[][] => {
     chunks.push(items.slice(index, index + chunkSize))
   }
   return chunks
+}
+
+const formatAxisCurrency = (value: number): string => {
+  const abs = Math.abs(value)
+  if (abs >= 100000000) {
+    return `${formatNumber(value / 100000000, 2)}億円`
+  }
+  if (abs >= 10000) {
+    return `${formatNumber(value / 10000, 0)}万円`
+  }
+  return formatYen(value)
 }
 
 const formatBonusSetting = (scenario: Scenario): string => {
@@ -163,22 +188,51 @@ const decorateEntries = (entries: ScenarioReportEntry[]): DecoratedScenarioEntry
   }))
 }
 
-const buildTrendPoints = (values: number[], width: number, height: number, padding: number): TrendPoint[] => {
+const resolveTrendDomain = (values: number[]): TrendDomain => {
+  const finiteValues = values.filter((value) => Number.isFinite(value))
+  if (finiteValues.length === 0) {
+    return { min: 0, max: 1 }
+  }
+
+  const min = Math.min(...finiteValues)
+  const max = Math.max(...finiteValues)
+  if (max === min) {
+    const offset = Math.max(1, Math.abs(max) * 0.1)
+    return {
+      min: min - offset,
+      max: max + offset
+    }
+  }
+
+  const range = max - min
+  const padding = Math.max(range * 0.08, 1)
+  return {
+    min: min - padding,
+    max: max + padding
+  }
+}
+
+const buildTrendPoints = (
+  values: number[],
+  width: number,
+  height: number,
+  plotArea: TrendPlotArea,
+  domain: TrendDomain
+): TrendPoint[] => {
   if (values.length === 0) {
     return []
   }
 
-  const finiteValues = values.filter((value) => Number.isFinite(value))
-  const min = finiteValues.length > 0 ? Math.min(...finiteValues) : 0
-  const max = finiteValues.length > 0 ? Math.max(...finiteValues) : 1
-  const range = max - min === 0 ? 1 : max - min
-  const step = values.length === 1 ? 0 : (width - padding * 2) / (values.length - 1)
+  const drawableWidth = Math.max(1, width - plotArea.left - plotArea.right)
+  const drawableHeight = Math.max(1, height - plotArea.top - plotArea.bottom)
+  const range = domain.max - domain.min === 0 ? 1 : domain.max - domain.min
+  const step = values.length === 1 ? 0 : drawableWidth / (values.length - 1)
 
   return values.map((value, index) => {
-    const safeValue = Number.isFinite(value) ? value : min
-    const x = padding + step * index
-    const ratio = (safeValue - min) / range
-    const y = height - padding - ratio * (height - padding * 2)
+    const safeValue = Number.isFinite(value) ? value : domain.min
+    const x = plotArea.left + step * index
+    const ratio = (safeValue - domain.min) / range
+    const y = height - plotArea.bottom - ratio * drawableHeight
     return { x, y }
   })
 }
@@ -189,15 +243,48 @@ const buildLinePath = (points: TrendPoint[]): string => {
     .join(' ')
 }
 
-const buildAreaPath = (points: TrendPoint[], height: number, padding: number): string => {
+const buildAreaPath = (points: TrendPoint[], baselineY: number): string => {
   if (points.length === 0) {
     return ''
   }
   const first = points[0]
   const last = points[points.length - 1]
-  return `${buildLinePath(points)} L ${last.x.toFixed(2)} ${(height - padding).toFixed(2)} L ${first.x.toFixed(
+  return `${buildLinePath(points)} L ${last.x.toFixed(2)} ${baselineY.toFixed(2)} L ${first.x.toFixed(
     2
-  )} ${(height - padding).toFixed(2)} Z`
+  )} ${baselineY.toFixed(2)} Z`
+}
+
+const buildYAxisTicks = (
+  domain: TrendDomain,
+  height: number,
+  plotArea: TrendPlotArea,
+  count: number
+): Array<{ value: number; y: number; label: string }> => {
+  const maxIndex = Math.max(1, count - 1)
+  const drawableHeight = Math.max(1, height - plotArea.top - plotArea.bottom)
+
+  return Array.from({ length: count }, (_, index) => {
+    const ratio = index / maxIndex
+    const value = domain.max - (domain.max - domain.min) * ratio
+    const y = plotArea.top + drawableHeight * ratio
+    return {
+      value,
+      y,
+      label: formatAxisCurrency(value)
+    }
+  })
+}
+
+const buildXAxisTickIndices = (length: number): number[] => {
+  if (length <= 1) {
+    return [0]
+  }
+  if (length === 2) {
+    return [0, 1]
+  }
+
+  const mid = Math.floor((length - 1) / 2)
+  return Array.from(new Set([0, mid, length - 1])).sort((left, right) => left - right)
 }
 
 const renderTrendSvg = (
@@ -206,15 +293,37 @@ const renderTrendSvg = (
   netValues: number[],
   palette: ScenarioPalette
 ): string => {
-  const width = 340
-  const height = 132
-  const padding = 14
-  const grossPoints = buildTrendPoints(grossValues, width, height, padding)
-  const netPoints = buildTrendPoints(netValues, width, height, padding)
+  const width = 760
+  const height = 430
+  const plotArea: TrendPlotArea = {
+    left: 92,
+    right: 36,
+    top: 26,
+    bottom: 68
+  }
+
+  const domain = resolveTrendDomain([...grossValues, ...netValues])
+  const grossPoints = buildTrendPoints(grossValues, width, height, plotArea, domain)
+  const netPoints = buildTrendPoints(netValues, width, height, plotArea, domain)
   const grossPath = buildLinePath(grossPoints)
   const netPath = buildLinePath(netPoints)
-  const netAreaPath = buildAreaPath(netPoints, height, padding)
+  const baselineY = height - plotArea.bottom
+  const netAreaPath = buildAreaPath(netPoints, baselineY)
   const gradientId = `net-gradient-${key}`
+  const yTicks = buildYAxisTicks(domain, height, plotArea, 4)
+  const xTicks = buildXAxisTickIndices(Math.max(grossValues.length, netValues.length))
+  const xTickLabels = xTicks.map((tickIndex) => {
+    const point = netPoints[tickIndex] ?? grossPoints[tickIndex]
+    return {
+      x: point ? point.x : plotArea.left,
+      label: `${tickIndex + 1}年目`
+    }
+  })
+
+  const netLastPoint = netPoints[netPoints.length - 1]
+  const grossLastPoint = grossPoints[grossPoints.length - 1]
+  const netLastValue = netValues[netValues.length - 1] ?? 0
+  const grossLastValue = grossValues[grossValues.length - 1] ?? 0
 
   return `
     <svg viewBox="0 0 ${width} ${height}" class="trend-svg" role="img" aria-label="年次推移グラフ">
@@ -224,12 +333,71 @@ const renderTrendSvg = (
           <stop offset="100%" stop-color="${palette.accent}" stop-opacity="0.02" />
         </linearGradient>
       </defs>
-      <line x1="${padding}" y1="${height - padding}" x2="${width - padding}" y2="${height - padding}" stroke="#cbd5e1" stroke-width="1" />
-      <line x1="${padding}" y1="${height / 2}" x2="${width - padding}" y2="${height / 2}" stroke="#e2e8f0" stroke-width="1" />
-      <line x1="${padding}" y1="${padding}" x2="${width - padding}" y2="${padding}" stroke="#f1f5f9" stroke-width="1" />
+      ${yTicks
+        .map(
+          (tick) => `
+            <line x1="${plotArea.left}" y1="${tick.y.toFixed(2)}" x2="${width - plotArea.right}" y2="${tick.y.toFixed(
+              2
+            )}" stroke="${tick.value === domain.min ? '#cbd5e1' : '#e2e8f0'}" stroke-width="1" />
+            <text x="${(plotArea.left - 8).toFixed(2)}" y="${(tick.y + 4).toFixed(
+              2
+            )}" text-anchor="end" fill="#64748b" font-size="12">${tick.label}</text>
+          `
+        )
+        .join('')}
+      <line x1="${plotArea.left}" y1="${plotArea.top}" x2="${plotArea.left}" y2="${baselineY}" stroke="#cbd5e1" stroke-width="1.2" />
+      <line x1="${plotArea.left}" y1="${baselineY}" x2="${width - plotArea.right}" y2="${baselineY}" stroke="#cbd5e1" stroke-width="1.2" />
+      ${xTickLabels
+        .map(
+          (tick) => `
+            <line x1="${tick.x.toFixed(2)}" y1="${baselineY}" x2="${tick.x.toFixed(2)}" y2="${(baselineY + 5).toFixed(
+              2
+            )}" stroke="#94a3b8" stroke-width="1" />
+            <text x="${tick.x.toFixed(2)}" y="${(baselineY + 20).toFixed(
+              2
+            )}" text-anchor="middle" fill="#64748b" font-size="11">${tick.label}</text>
+          `
+        )
+        .join('')}
       <path d="${netAreaPath}" fill="url(#${gradientId})" />
-      <path d="${grossPath}" fill="none" stroke="#334155" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
-      <path d="${netPath}" fill="none" stroke="${palette.accent}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="${grossPath}" fill="none" stroke="#334155" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="${netPath}" fill="none" stroke="${palette.accent}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" />
+      ${
+        grossLastPoint
+          ? `<circle cx="${grossLastPoint.x.toFixed(2)}" cy="${grossLastPoint.y.toFixed(
+              2
+            )}" r="3.8" fill="#334155" />`
+          : ''
+      }
+      ${
+        netLastPoint
+          ? `<circle cx="${netLastPoint.x.toFixed(2)}" cy="${netLastPoint.y.toFixed(
+              2
+            )}" r="4.2" fill="${palette.accent}" />`
+          : ''
+      }
+      ${
+        grossLastPoint
+          ? `<text x="${Math.max(plotArea.left + 90, grossLastPoint.x - 8).toFixed(2)}" y="${Math.max(
+              plotArea.top + 14,
+              grossLastPoint.y - 10
+            ).toFixed(2)}" text-anchor="end" fill="#334155" font-size="11">額面: ${formatAxisCurrency(
+              grossLastValue
+            )}</text>`
+          : ''
+      }
+      ${
+        netLastPoint
+          ? `<text x="${Math.max(plotArea.left + 90, netLastPoint.x - 8).toFixed(2)}" y="${Math.min(
+              baselineY - 8,
+              netLastPoint.y + 17
+            ).toFixed(2)}" text-anchor="end" fill="${palette.accentDark}" font-size="11">手取り: ${formatAxisCurrency(
+              netLastValue
+            )}</text>`
+          : ''
+      }
+      <text x="${plotArea.left}" y="14" fill="#64748b" font-size="12">年収（円）</text>
+      <text x="${width - plotArea.right}" y="${height - 12}" text-anchor="end" fill="#64748b" font-size="12">年次</text>
     </svg>
   `
 }
@@ -350,7 +518,7 @@ const renderConditionCard = (entry: DecoratedScenarioEntry, untilYear: number): 
   `
 }
 
-const renderConditionSlides = (entries: DecoratedScenarioEntry[], untilYear: number): string[] => {
+export const renderConditionSlides = (entries: DecoratedScenarioEntry[], untilYear: number): string[] => {
   return chunkArray(entries, 4).map((chunk, chunkIndex, allChunks) => {
     const suffix = allChunks.length > 1 ? `（${chunkIndex + 1}/${allChunks.length}）` : ''
     return renderSlide({
@@ -369,46 +537,317 @@ const renderTrendCard = (entry: DecoratedScenarioEntry, untilYear: number, index
   const netValues = details.map((detail) => detail.netAnnualIncome)
   const first = details[0]
   const last = details[details.length - 1]
+  const stats = computeGrowthStats(entry, untilYear)
   const deductionRate = last && last.grossAnnualIncome > 0 ? last.totalDeductions / last.grossAnnualIncome : 0
   const key = `${index}-${entry.scenario.id}`.replaceAll(/[^a-zA-Z0-9_-]/g, '')
+  const summaryText = stats
+    ? `手取りは1年目比で ${formatYen(stats.netIncrease)} 増（${formatPercent(stats.netIncreaseRate)}）、CAGR ${
+        stats.netCagr === null ? '-' : formatPercent(stats.netCagr)
+      }。`
+    : '分析サマリーを生成できる十分なデータがありません。'
 
   return `
     <article class="trend-card" style="--accent:${entry.palette.accent}; --accent-soft:${entry.palette.accentSoft};">
-      <header>
+      <header class="trend-card-header">
         <h3>${escapeHtml(entry.scenario.title)}</h3>
-        <span>${untilYear}年目時点</span>
+        <span>1年目〜${untilYear}年目</span>
       </header>
       <div class="trend-svg-wrap">${renderTrendSvg(key, grossValues, netValues, entry.palette)}</div>
       <div class="trend-legend">
         <span><i class="dot net"></i>手取り</span>
         <span><i class="dot gross"></i>額面</span>
       </div>
+      <p class="trend-summary">${escapeHtml(summaryText)}</p>
       <div class="trend-metrics">
+        <div><span>1年目額面</span><strong>${first ? formatYen(first.grossAnnualIncome) : '-'}</strong></div>
         <div><span>1年目手取り</span><strong>${first ? formatYen(first.netAnnualIncome) : '-'}</strong></div>
         <div><span>${untilYear}年目手取り</span><strong>${last ? formatYen(last.netAnnualIncome) : '-'}</strong></div>
         <div><span>${untilYear}年目額面</span><strong>${last ? formatYen(last.grossAnnualIncome) : '-'}</strong></div>
+        <div><span>累計手取り</span><strong>${stats ? formatYen(stats.cumulativeNet) : '-'}</strong></div>
         <div><span>控除率</span><strong>${formatPercent(deductionRate)}</strong></div>
       </div>
     </article>
   `
 }
 
-const renderTrendSlides = (entries: DecoratedScenarioEntry[], untilYear: number): string[] => {
-  return chunkArray(entries, 4).map((chunk, chunkIndex, allChunks) => {
+export const renderTrendSlides = (entries: DecoratedScenarioEntry[], untilYear: number): string[] => {
+  return chunkArray(entries, 2).map((chunk, chunkIndex, allChunks) => {
     const suffix = allChunks.length > 1 ? `（${chunkIndex + 1}/${allChunks.length}）` : ''
     return renderSlide({
       category: 'Income Trend',
       title: `年次推移ダッシュボード ${suffix}`,
-      subtitle: '線グラフで額面と手取りの伸びを可視化',
-      body: `<div class="card-grid two-cols">${chunk
-        .map((entry, index) => renderTrendCard(entry, untilYear, chunkIndex * 4 + index))
+      subtitle: '縦積み大型チャート（軸ラベル付き）で分析しやすく可視化',
+      body: `<div class="trend-stack">${chunk
+        .map((entry, index) => renderTrendCard(entry, untilYear, chunkIndex * 2 + index))
         .join('')}</div>`,
       themeClass: 'theme-trend'
     })
   })
 }
 
-const renderGrowthInsightSlide = (entries: DecoratedScenarioEntry[], untilYear: number): string => {
+const renderTaxBreakdownCardGraph = (detail: AnnualDetail): string => {
+  const tax = detail.breakdown.deductions
+  const incomeTax = Math.max(0, tax.incomeTax)
+  const reconstructionTax = Math.max(0, tax.reconstructionSpecialIncomeTax)
+  const residentTax = Math.max(0, tax.residentTax)
+  const totalTax = incomeTax + reconstructionTax + residentTax
+
+  const calcRatio = (value: number): number => {
+    if (totalTax <= 0) {
+      return 0
+    }
+    return (value / totalTax) * 100
+  }
+
+  const incomeRatio = calcRatio(incomeTax)
+  const reconstructionRatio = calcRatio(reconstructionTax)
+  const residentRatio = calcRatio(residentTax)
+
+  return `
+    <div class="annual-tax-graph">
+      <div class="annual-tax-bar">
+        <span class="annual-tax-segment annual-tax-income" style="width:${incomeRatio.toFixed(2)}%"></span>
+        <span class="annual-tax-segment annual-tax-reconstruction" style="width:${reconstructionRatio.toFixed(
+          2
+        )}%"></span>
+        <span class="annual-tax-segment annual-tax-resident" style="width:${residentRatio.toFixed(2)}%"></span>
+      </div>
+      <div class="annual-tax-total">税合計 ${formatYen(totalTax)}</div>
+      <div class="annual-tax-legend">
+        <div><i class="annual-tax-dot annual-tax-income"></i><span>所得税</span><b>${formatYen(incomeTax)}</b></div>
+        <div><i class="annual-tax-dot annual-tax-reconstruction"></i><span>復興税</span><b>${formatYen(reconstructionTax)}</b></div>
+        <div><i class="annual-tax-dot annual-tax-resident"></i><span>住民税</span><b>${formatYen(residentTax)}</b></div>
+      </div>
+    </div>
+  `
+}
+
+const renderAnnualDetailCard = (detail: AnnualDetail, previousDetail: AnnualDetail | undefined): string => {
+  const netRate =
+    detail.grossAnnualIncome > 0 ? Math.max(0, Math.min(1, detail.netAnnualIncome / detail.grossAnnualIncome)) : 0
+
+  const renderGrowthItem = (label: string, currentValue: number, previousValue: number | null): string => {
+    if (previousValue === null) {
+      return `
+        <div class="annual-growth-item">
+          <span>${label} 前年比</span>
+          <strong>-</strong>
+          <small>増加率 -</small>
+        </div>
+      `
+    }
+
+    const delta = currentValue - previousValue
+    const rate = previousValue > 0 ? delta / previousValue : Number.NaN
+    const trendClass = delta >= 0 ? 'is-positive' : 'is-negative'
+    const deltaText = `${delta >= 0 ? '+' : ''}${formatYen(delta)}`
+    const rateText = Number.isFinite(rate) ? `${delta >= 0 ? '+' : ''}${formatPercent(rate, 1)}` : '-'
+
+    return `
+      <div class="annual-growth-item ${trendClass}">
+        <span>${label} 前年比</span>
+        <strong>${deltaText}</strong>
+        <small>増加率 ${rateText}</small>
+      </div>
+    `
+  }
+
+  return `
+    <article class="annual-detail-card">
+      <header class="annual-detail-card-header">
+        <span class="annual-year-badge">${detail.year}年目</span>
+        <span class="annual-net-rate">手取り率 ${formatPercent(netRate, 1)}</span>
+      </header>
+
+      <div class="annual-primary-values">
+        <div class="annual-value annual-value-gross">
+          <span>年収額面</span>
+          <strong>${formatYen(detail.grossAnnualIncome)}</strong>
+        </div>
+        <div class="annual-value annual-value-net">
+          <span>年収手取</span>
+          <strong>${formatYen(detail.netAnnualIncome)}</strong>
+        </div>
+      </div>
+
+      <div class="annual-monthly-values">
+        <div><span>月給額面</span><strong>${formatYen(detail.grossAnnualIncome / 12)}</strong></div>
+        <div><span>月給手取</span><strong>${formatYen(detail.netAnnualIncome / 12)}</strong></div>
+      </div>
+
+      <section class="annual-growth-values">
+        ${renderGrowthItem('額面', detail.grossAnnualIncome, previousDetail?.grossAnnualIncome ?? null)}
+        ${renderGrowthItem('手取', detail.netAnnualIncome, previousDetail?.netAnnualIncome ?? null)}
+      </section>
+
+      <section class="annual-tax-section">
+        <h4>税金の内訳</h4>
+        ${renderTaxBreakdownCardGraph(detail)}
+      </section>
+    </article>
+  `
+}
+
+const splitAnnualDetailsInTwoPages = (details: AnnualDetail[]): [AnnualDetail[], AnnualDetail[]] => {
+  const splitIndex = Math.ceil(details.length / 2)
+  return [details.slice(0, splitIndex), details.slice(splitIndex)]
+}
+
+const renderAnnualDetailCardsPage = ({
+  scenarioTitle,
+  details,
+  allDetails,
+  pageNumber,
+  totalPages
+}: {
+  scenarioTitle: string
+  details: AnnualDetail[]
+  allDetails: AnnualDetail[]
+  pageNumber: number
+  totalPages: number
+}): string => {
+  const rangeText =
+    details.length > 0
+      ? `${details[0].year}年目〜${details[details.length - 1].year}年目`
+      : '対象年度なし'
+
+  const detailsByYear = new Map(allDetails.map((detail) => [detail.year, detail]))
+
+  return renderSlide({
+    category: 'Scenario Summary',
+    title: `${scenarioTitle} - 年度ごとの給与詳細 (${pageNumber}/${totalPages})`,
+    subtitle: `${rangeText} / 年度カード形式`,
+    body: `
+      <section class="annual-detail-page">
+        <div class="annual-detail-grid">
+          ${
+            details.length > 0
+              ? details
+                  .map((detail) => renderAnnualDetailCard(detail, detailsByYear.get(detail.year - 1)))
+                  .join('')
+              : '<article class="annual-detail-empty">該当する年度データがありません。</article>'
+          }
+        </div>
+      </section>
+    `,
+    themeClass: 'theme-detail'
+  })
+}
+
+const renderScenarioSummarySlides = (
+  entry: DecoratedScenarioEntry,
+  untilYear: number,
+  index: number
+): string[] => {
+  const details = entry.result.details.slice(0, untilYear)
+  const [pageOneDetails, pageTwoDetails] = splitAnnualDetailsInTwoPages(details)
+
+  const scenario = entry.scenario
+  const first = details[0]
+  const last = details[details.length - 1]
+  const stats = computeGrowthStats(entry, untilYear)
+  const prefectureLabel =
+    PREFECTURE_LABEL_MAP.get(scenario.taxProfile?.prefectureCode ?? '') ?? scenario.taxProfile?.prefectureCode ?? '-'
+  const industryLabel =
+    INDUSTRY_LABEL_MAP.get(scenario.taxProfile?.industryCode ?? '') ?? scenario.taxProfile?.industryCode ?? '-'
+
+  const trendKey = `scenario-summary-${index}-${scenario.id}`.replaceAll(/[^a-zA-Z0-9_-]/g, '')
+  const trendSvg = renderTrendSvg(
+    trendKey,
+    details.map((detail) => detail.grossAnnualIncome),
+    details.map((detail) => detail.netAnnualIncome),
+    entry.palette
+  )
+  const netIncrease = stats ? formatYen(stats.netIncrease) : '-'
+  const netCagr = stats?.netCagr === null || !stats ? '-' : formatPercent(stats.netCagr)
+  const deductionRate =
+    last && last.grossAnnualIncome > 0
+      ? formatPercent(last.totalDeductions / last.grossAnnualIncome, 1)
+      : '-'
+  const monthlyGross = last ? formatYen(last.grossAnnualIncome / 12) : '-'
+  const monthlyNet = last ? formatYen(last.netAnnualIncome / 12) : '-'
+
+  const slides: string[] = [
+    renderSlide({
+      category: 'Scenario Summary',
+      title: `${scenario.title}`,
+      subtitle: '初期入力条件 / 主要KPI / 年次推移グラフ',
+      body: `
+        <div class="scenario-summary-layout">
+          <div class="summary-top-grid">
+            <section class="summary-panel">
+              <h3>初期入力条件</h3>
+              <dl class="input-condition-grid">
+                <div><dt>初任給</dt><dd>${formatYen(scenario.initialGrossSalary)}</dd></div>
+                <div><dt>算出基本給</dt><dd>${formatYen(scenario.initialBasicSalary)}</dd></div>
+                <div><dt>昇給率</dt><dd>${formatNumber(scenario.salaryGrowthRate, 2)}%</dd></div>
+                <div><dt>固定残業時間</dt><dd>${formatNumber(scenario.overtime.fixedOvertime.hours, 1)}h</dd></div>
+                <div><dt>年間休日数</dt><dd>${formatNumber(scenario.annualHolidays, 0)}日</dd></div>
+                <div><dt>ボーナス</dt><dd>${escapeHtml(formatBonusSetting(scenario))}</dd></div>
+                <div><dt>勤務地</dt><dd>${escapeHtml(prefectureLabel)}</dd></div>
+                <div><dt>業種</dt><dd>${escapeHtml(industryLabel)}</dd></div>
+                <div><dt>扶養条件</dt><dd>${escapeHtml(
+                  `${scenario.deductions?.dependents?.hasSpouse ? '配偶者あり' : '配偶者なし'} / 扶養${
+                    scenario.deductions?.dependents?.numberOfDependents ?? 0
+                  }人`
+                )}</dd></div>
+              </dl>
+            </section>
+
+            <section class="summary-panel summary-kpi-panel">
+              <h3>分析サマリー（${untilYear}年目時点）</h3>
+              <div class="summary-kpi-grid">
+                <div><span>1年目 年収額面</span><strong>${first ? formatYen(first.grossAnnualIncome) : '-'}</strong></div>
+                <div><span>${untilYear}年目 年収手取</span><strong>${last ? formatYen(last.netAnnualIncome) : '-'}</strong></div>
+                <div><span>手取り増加額</span><strong>${netIncrease}</strong></div>
+                <div><span>手取りCAGR</span><strong>${netCagr}</strong></div>
+                <div><span>${untilYear}年目 月給額面</span><strong>${monthlyGross}</strong></div>
+                <div><span>${untilYear}年目 月給手取</span><strong>${monthlyNet}</strong></div>
+                <div><span>${untilYear}年目 控除率</span><strong>${deductionRate}</strong></div>
+                <div><span>累計手取り</span><strong>${stats ? formatYen(stats.cumulativeNet) : '-'}</strong></div>
+              </div>
+            </section>
+          </div>
+
+          <section class="summary-panel summary-trend-panel">
+            <div class="summary-trend-head">
+              <h3>年次推移グラフ</h3>
+              <div class="summary-trend-legend">
+                <span><i class="dot net"></i>手取り</span>
+                <span><i class="dot gross"></i>額面</span>
+              </div>
+            </div>
+            <div class="summary-trend-chart">${trendSvg}</div>
+          </section>
+        </div>
+      `,
+      themeClass: 'theme-detail'
+    })
+  ]
+
+  slides.push(
+    renderAnnualDetailCardsPage({
+      scenarioTitle: scenario.title,
+      details: pageOneDetails,
+      allDetails: details,
+      pageNumber: 1,
+      totalPages: 2
+    })
+  )
+  slides.push(
+    renderAnnualDetailCardsPage({
+      scenarioTitle: scenario.title,
+      details: pageTwoDetails,
+      allDetails: details,
+      pageNumber: 2,
+      totalPages: 2
+    })
+  )
+
+  return slides
+}
+
+export const renderGrowthInsightSlide = (entries: DecoratedScenarioEntry[], untilYear: number): string => {
   const growth = entries
     .map((entry) => {
       const stats = computeGrowthStats(entry, untilYear)
@@ -503,7 +942,7 @@ const renderGrowthInsightSlide = (entries: DecoratedScenarioEntry[], untilYear: 
   })
 }
 
-const renderScenarioDetailSlide = (entry: DecoratedScenarioEntry, untilYear: number): string => {
+export const renderScenarioDetailSlide = (entry: DecoratedScenarioEntry, untilYear: number): string => {
   const { scenario, result } = entry
   const first = result.details[0]
   const last = result.details[untilYear - 1]
@@ -688,18 +1127,18 @@ export const buildScenarioComparisonReportHtml = ({
   const decoratedEntries = decorateEntries(entries)
   const slides: string[] = []
 
-  if (includeSections.conditions) {
-    slides.push(...renderConditionSlides(decoratedEntries, untilYear))
+  const shouldRenderScenarioSummaries =
+    includeSections.conditions ||
+    includeSections.yearlyComparison ||
+    includeSections.growthSummary ||
+    includeSections.scenarioDetails
+
+  if (shouldRenderScenarioSummaries) {
+    decoratedEntries.forEach((entry, index) => {
+      slides.push(...renderScenarioSummarySlides(entry, untilYear, index))
+    })
   }
-  if (includeSections.yearlyComparison) {
-    slides.push(...renderTrendSlides(decoratedEntries, untilYear))
-  }
-  if (includeSections.growthSummary) {
-    slides.push(renderGrowthInsightSlide(decoratedEntries, untilYear))
-  }
-  if (includeSections.scenarioDetails) {
-    slides.push(...decoratedEntries.map((entry) => renderScenarioDetailSlide(entry, untilYear)))
-  }
+
   if (includeSections.taxMeta) {
     slides.push(renderTaxMetaSlide(taxSchema))
   }
@@ -904,61 +1343,384 @@ export const buildScenarioComparisonReportHtml = ({
         text-align: right;
       }
 
-      .trend-card {
+      .summary-panel {
+        border-radius: 12px;
+        border: 1px solid #dbe7f6;
+        background: #ffffff;
         padding: 9px;
-        background: linear-gradient(170deg, var(--accent-soft) 0%, #ffffff 55%);
       }
-      .trend-card header {
+      .scenario-summary-layout {
+        height: 100%;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 10px;
+      }
+      .summary-top-grid {
+        display: grid;
+        grid-template-columns: 1.35fr 1fr;
+        gap: 10px;
+      }
+      .summary-panel h3 {
+        margin: 0 0 7px;
+        font-size: 13.6px;
+        color: #0f172a;
+      }
+      .input-condition-grid {
+        margin: 0;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px 9px;
+      }
+      .input-condition-grid div {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        border-radius: 8px;
+        background: #f8fbff;
+        border: 1px solid #e2e8f0;
+        padding: 6px 8px;
+      }
+      .input-condition-grid dt {
+        color: #64748b;
+        font-size: 10px;
+      }
+      .input-condition-grid dd {
+        margin: 0;
+        font-size: 11.2px;
+        font-weight: 700;
+        text-align: right;
+      }
+      .summary-kpi-panel {
+        background: linear-gradient(165deg, #f8fffc 0%, #ffffff 56%);
+      }
+      .summary-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .summary-kpi-grid div {
+        border: 1px solid #dbe7f6;
+        border-radius: 9px;
+        background: #ffffff;
+        padding: 7px 8px;
+      }
+      .summary-kpi-grid span {
+        display: block;
+        color: #64748b;
+        font-size: 9.2px;
+      }
+      .summary-kpi-grid strong {
+        display: block;
+        margin-top: 3px;
+        color: #0f172a;
+        font-size: 11.2px;
+      }
+      .summary-trend-panel {
+        display: flex;
+        flex-direction: column;
+      }
+      .summary-trend-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 4px;
+      }
+      .summary-trend-legend {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #475569;
+        font-size: 9.8px;
+      }
+      .summary-trend-legend .dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        margin-right: 4px;
+        vertical-align: middle;
+      }
+      .summary-trend-legend .dot.net { background: #0ea5e9; }
+      .summary-trend-legend .dot.gross { background: #334155; }
+      .summary-trend-chart {
+        flex: 1;
+        min-height: 330px;
+      }
+      .summary-trend-chart .trend-svg {
+        height: 100%;
+      }
+      .summary-table-panel {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+      .summary-table-panel.full-height {
+        height: 100%;
+      }
+      .annual-detail-page {
+        height: 100%;
+      }
+      .annual-detail-grid {
+        height: 100%;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        align-content: start;
+      }
+      .annual-detail-card {
+        border-radius: 14px;
+        border: 1px solid #dbe7f6;
+        background: linear-gradient(170deg, #f8fbff 0%, #ffffff 60%);
+        padding: 9px;
+        display: grid;
+        gap: 7px;
+      }
+      .annual-detail-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 6px;
+      }
+      .annual-year-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: #0ea5e9;
+        color: #ffffff;
+        font-weight: 700;
+        font-size: 8.8px;
+        padding: 2px 8px;
+      }
+      .annual-net-rate {
+        color: #475569;
+        font-size: 8.6px;
+      }
+      .annual-primary-values {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .annual-value {
+        border: 1px solid #dbe7f6;
+        border-radius: 9px;
+        padding: 5px 6px;
+        background: #ffffff;
+      }
+      .annual-value span {
+        display: block;
+        color: #64748b;
+        font-size: 8.3px;
+      }
+      .annual-value strong {
+        display: block;
+        margin-top: 2px;
+        font-size: 10px;
+      }
+      .annual-value-gross strong { color: #334155; }
+      .annual-value-net strong { color: #0f766e; }
+      .annual-monthly-values {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .annual-monthly-values div {
+        border: 1px solid #dbe7f6;
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 4px 6px;
+      }
+      .annual-monthly-values span {
+        display: block;
+        color: #64748b;
+        font-size: 8.1px;
+      }
+      .annual-monthly-values strong {
+        display: block;
+        margin-top: 2px;
+        font-size: 9.4px;
+      }
+      .annual-growth-values {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px;
+      }
+      .annual-growth-item {
+        border: 1px solid #dbe7f6;
+        border-radius: 8px;
+        background: #ffffff;
+        padding: 4px 6px;
+      }
+      .annual-growth-item span {
+        display: block;
+        color: #64748b;
+        font-size: 8.1px;
+      }
+      .annual-growth-item strong {
+        display: block;
+        margin-top: 1px;
+        font-size: 9.5px;
+        color: #334155;
+      }
+      .annual-growth-item small {
+        display: block;
+        margin-top: 1px;
+        font-size: 7.9px;
+        color: #64748b;
+      }
+      .annual-growth-item.is-positive strong {
+        color: #047857;
+      }
+      .annual-growth-item.is-negative strong {
+        color: #b91c1c;
+      }
+      .annual-tax-section h4 {
+        margin: 0 0 3px;
+        color: #334155;
+        font-size: 9px;
+      }
+      .annual-tax-graph {
+        display: grid;
+        gap: 3px;
+      }
+      .annual-tax-bar {
+        display: flex;
+        height: 8px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: #e2e8f0;
+      }
+      .annual-tax-segment {
+        display: block;
+        height: 100%;
+      }
+      .annual-tax-income {
+        background: #f97316;
+      }
+      .annual-tax-reconstruction {
+        background: #8b5cf6;
+      }
+      .annual-tax-resident {
+        background: #ef4444;
+      }
+      .annual-tax-total {
+        font-size: 8.1px;
+        color: #475569;
+      }
+      .annual-tax-legend {
+        display: grid;
+        gap: 1px;
+      }
+      .annual-tax-legend div {
+        display: grid;
+        grid-template-columns: auto 38px 1fr;
+        gap: 4px;
+        align-items: center;
+      }
+      .annual-tax-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        display: inline-block;
+      }
+      .annual-tax-legend span {
+        color: #64748b;
+        font-size: 8px;
+      }
+      .annual-tax-legend b {
+        font-weight: 600;
+        font-size: 8.2px;
+        text-align: right;
+      }
+      .annual-detail-empty {
+        border-radius: 12px;
+        border: 1px dashed #cbd5e1;
+        background: #f8fafc;
+        color: #64748b;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 140px;
+        font-size: 10px;
+      }
+
+      .trend-stack {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .trend-card {
+        flex: 1;
+        min-height: 0;
+        padding: 10px;
+        background: linear-gradient(170deg, var(--accent-soft) 0%, #ffffff 62%);
+        display: flex;
+        flex-direction: column;
+      }
+      .trend-card-header {
         display: flex;
         align-items: baseline;
         justify-content: space-between;
         gap: 8px;
       }
-      .trend-card h3 { font-size: 14px; }
-      .trend-card header span { font-size: 9px; color: #475569; }
+      .trend-card h3 { font-size: 15px; }
+      .trend-card-header span { font-size: 10px; color: #475569; }
       .trend-svg-wrap {
-        margin-top: 6px;
+        margin-top: 7px;
         border-radius: 10px;
         border: 1px solid #dbe7f6;
         background: #f8fbff;
-        padding: 4px;
+        padding: 6px 8px 4px;
+        flex: 1;
+        min-height: 182px;
       }
       .trend-svg {
         display: block;
         width: 100%;
-        height: 85px;
+        height: 100%;
       }
       .trend-legend {
-        margin-top: 4px;
+        margin-top: 5px;
         display: flex;
-        gap: 10px;
-        font-size: 8.6px;
+        gap: 12px;
+        font-size: 9px;
         color: #475569;
       }
       .trend-legend .dot {
         display: inline-block;
-        width: 9px;
-        height: 9px;
+        width: 10px;
+        height: 10px;
         border-radius: 999px;
         margin-right: 4px;
         vertical-align: middle;
       }
       .trend-legend .dot.net { background: var(--accent); }
       .trend-legend .dot.gross { background: #334155; }
+      .trend-summary {
+        margin-top: 5px;
+        border-radius: 8px;
+        background: rgba(248, 250, 252, 0.92);
+        border: 1px solid #dbe7f6;
+        padding: 5px 7px;
+        color: #334155;
+        font-size: 9.2px;
+      }
       .trend-metrics {
         margin-top: 6px;
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 5px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
       }
       .trend-metrics div {
         border-radius: 8px;
         border: 1px solid #dbe7f6;
         background: #ffffff;
-        padding: 4px 6px;
+        padding: 5px 6px;
       }
-      .trend-metrics span { display: block; color: #64748b; font-size: 8.6px; }
-      .trend-metrics strong { display: block; margin-top: 2px; font-size: 9.8px; }
+      .trend-metrics span { display: block; color: #64748b; font-size: 8.9px; }
+      .trend-metrics strong { display: block; margin-top: 2px; font-size: 10px; }
 
       .insight-layout {
         display: grid;
