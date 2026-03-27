@@ -9,6 +9,7 @@ import icon from '../../resources/icon.png?asset'
 import Store from 'electron-store'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
+import { parse as parseYaml } from 'yaml'
 import type { GraphViewSettings, PredictionResult, Scenario, TaxSchema } from '../types/miraishi'
 import { scenarioSchema, taxSchemaSchema } from './lib/validators'
 import { calculatePrediction } from './lib/calculator'
@@ -30,11 +31,39 @@ const store = new Store<AppStore>({
 
 const initialCalculationCache = new Map<string, PredictionResult>()
 
-const taxSchemaPath = join(__dirname, '../../resources/schema/tax_schema.json')
+const taxSchemaPath = join(__dirname, '../../resources/schema/tax_schema.yaml')
+const legacyTaxSchemaPath = join(__dirname, '../../resources/schema/tax_schema.json')
+
+const loadBundledTaxSchema = (): TaxSchema => {
+  const candidatePaths = [taxSchemaPath, legacyTaxSchemaPath]
+  let lastError: unknown = null
+
+  for (const candidatePath of candidatePaths) {
+    if (!fs.existsSync(candidatePath)) {
+      continue
+    }
+
+    try {
+      const rawData = fs.readFileSync(candidatePath, 'utf-8')
+      const parsed =
+        candidatePath.endsWith('.yaml') || candidatePath.endsWith('.yml')
+          ? parseYaml(rawData)
+          : JSON.parse(rawData)
+      return taxSchemaSchema.parse(parsed)
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  if (lastError) {
+    throw lastError
+  }
+  throw new Error('Bundled tax schema file was not found.')
+}
+
 let taxSchema: TaxSchema | null = null
 try {
-  const rawData = fs.readFileSync(taxSchemaPath, 'utf-8')
-  const bundledTaxSchema = taxSchemaSchema.parse(JSON.parse(rawData))
+  const bundledTaxSchema = loadBundledTaxSchema()
   const storedTaxSchema = store.get('taxSchema')
   if (storedTaxSchema) {
     taxSchema = taxSchemaSchema.parse(storedTaxSchema)

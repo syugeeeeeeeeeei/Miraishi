@@ -25,10 +25,13 @@ import {
   TabPanels,
   Tabs,
   Text,
-  Textarea,
   VStack
 } from '@chakra-ui/react'
+import CodeMirror from '@uiw/react-codemirror'
+import { yaml as yamlLanguage } from '@codemirror/lang-yaml'
+import { EditorView, highlightTrailingWhitespace, highlightWhitespace } from '@codemirror/view'
 import { FaPlus, FaTrash } from 'react-icons/fa'
+import { parseDocument } from 'yaml'
 import type { TaxSchema } from '@myTypes/miraishi'
 
 interface TaxRuleDialogProps {
@@ -92,21 +95,172 @@ const isTaxSchemaObject = (value: unknown): value is TaxSchema => {
 
 const toDraftCopy = (schema: TaxSchema): TaxSchema => JSON.parse(JSON.stringify(schema))
 
-const parseTaxSchemaFromText = (
-  jsonText: string
-): { schema: TaxSchema | null; error: string | null } => {
-  try {
-    const parsed = JSON.parse(jsonText)
-    if (!isTaxSchemaObject(parsed)) {
-      return {
-        schema: null,
-        error: '税金ルールJSONの形式が不正です。必須フィールドと数値型を確認してください。'
-      }
-    }
-    return { schema: parsed, error: null }
-  } catch {
-    return { schema: null, error: 'JSONの構文エラーがあります。' }
+const quoteYamlString = (value: string): string => `'${value.replace(/'/g, "''")}'`
+
+const YAML_EDITOR_FONT_FAMILY =
+  "var(--chakra-fonts-body), 'Yu Gothic UI', 'Meiryo', 'Hiragino Kaku Gothic ProN', sans-serif"
+
+const yamlEditorExtensions = [
+  yamlLanguage(),
+  highlightWhitespace(),
+  highlightTrailingWhitespace(),
+  EditorView.lineWrapping,
+  EditorView.contentAttributes.of({
+    spellcheck: 'false',
+    autocorrect: 'off',
+    autocapitalize: 'off',
+    'data-gramm': 'false'
+  })
+]
+
+const yamlEditorTheme = EditorView.theme({
+  '&': {
+    fontFamily: YAML_EDITOR_FONT_FAMILY,
+    fontSize: '15px',
+    backgroundColor: '#fbfcff'
+  },
+  '.cm-scroller': {
+    fontFamily: YAML_EDITOR_FONT_FAMILY,
+    lineHeight: '1.85'
+  },
+  '.cm-content': {
+    letterSpacing: '0.012em',
+    paddingTop: '10px',
+    paddingBottom: '10px'
+  },
+  '.cm-line': {
+    paddingLeft: '10px',
+    paddingRight: '12px'
+  },
+  '.cm-gutters': {
+    backgroundColor: '#f4f7fb',
+    color: '#64748b',
+    borderRight: '1px solid #d9e2ec',
+    fontSize: '14px'
+  },
+  '.cm-activeLineGutter': {
+    backgroundColor: '#eaf2ff',
+    color: '#334155'
+  },
+  '.cm-activeLine': {
+    backgroundColor: 'rgba(37, 99, 235, 0.08)'
+  },
+  '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
+    backgroundColor: 'rgba(14, 116, 144, 0.20)'
+  },
+  '&.cm-focused': {
+    outline: 'none'
+  },
+  '.cm-cursor, .cm-dropCursor': {
+    borderLeftColor: '#0284c7'
+  },
+  '.cm-foldPlaceholder': {
+    backgroundColor: '#e8edf5',
+    border: '1px solid #cbd5e1',
+    color: '#475569'
+  },
+  '.cm-comment': {
+    color: '#64748b'
+  },
+  '.cm-string': {
+    color: '#0f766e'
+  },
+  '.cm-number': {
+    color: '#7c3aed'
+  },
+  '.cm-propertyName': {
+    color: '#0b4f92',
+    fontWeight: '600'
+  },
+  '.cm-highlightSpace': {
+    backgroundImage:
+      'radial-gradient(circle at 50% 55%, rgba(148, 163, 184, 0.34) 14%, transparent 15%)',
+    backgroundPosition: 'center',
+    backgroundSize: '1.45ch 100%',
+    backgroundRepeat: 'repeat-x'
+  },
+  '.cm-highlightTab': {
+    backgroundImage:
+      "url('data:image/svg+xml,%3Csvg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"20\"%3E%3Cpath stroke=\"%2394A3B8\" stroke-width=\"1.2\" fill=\"none\" d=\"M1 10H196L190 5M190 15L196 10M197 3L197 17\"/%3E%3C/svg%3E')",
+    backgroundSize: 'auto 100%',
+    backgroundPosition: 'right 86%',
+    backgroundRepeat: 'no-repeat'
+  },
+  '.cm-trailingSpace': {
+    backgroundColor: 'rgba(229, 62, 62, 0.28)'
   }
+})
+
+const toTaxSchemaYamlText = (schema: TaxSchema): string => {
+  const lines: string[] = [
+    '# =============================',
+    '# 税金ルール設定 (YAML)',
+    '# 税率は 0.1 = 10% の小数で指定します。',
+    '# =============================',
+    '',
+    '# バージョン',
+    `version: ${quoteYamlString(schema.version)}`,
+    '',
+    '# 所得税率テーブル（課税所得の帯）',
+    'incomeTaxRates:',
+    '  # threshold は課税所得の上限です。null は上限なし（最終帯）を表します。'
+  ]
+
+  for (const [index, rate] of schema.incomeTaxRates.entries()) {
+    lines.push(`  # ${index + 1}段目`)
+    lines.push(`  - threshold: ${rate.threshold === null ? 'null' : rate.threshold}`)
+    lines.push(`    rate: ${rate.rate}`)
+    lines.push(`    deduction: ${rate.deduction}`)
+    if (index < schema.incomeTaxRates.length - 1) {
+      lines.push('')
+    }
+  }
+
+  lines.push('')
+  lines.push('# 住民税率')
+  lines.push('residentTaxRate: ' + schema.residentTaxRate)
+  lines.push('')
+  lines.push('# 社会保険')
+  lines.push('socialInsurance:')
+  lines.push('  # maxStandardRemuneration は標準報酬月額の上限値です。')
+  lines.push('  healthInsurance:')
+  lines.push(`    rate: ${schema.socialInsurance.healthInsurance.rate}`)
+  lines.push(
+    `    maxStandardRemuneration: ${schema.socialInsurance.healthInsurance.maxStandardRemuneration}`
+  )
+  lines.push('  pension:')
+  lines.push(`    rate: ${schema.socialInsurance.pension.rate}`)
+  lines.push(`    maxStandardRemuneration: ${schema.socialInsurance.pension.maxStandardRemuneration}`)
+  lines.push('  employmentInsurance:')
+  lines.push(`    rate: ${schema.socialInsurance.employmentInsurance.rate}`)
+  lines.push('')
+  lines.push('# 所得控除額（年間）')
+  lines.push('deductions:')
+  lines.push(`  basic: ${schema.deductions.basic}`)
+  lines.push(`  spouse: ${schema.deductions.spouse}`)
+  lines.push(`  dependent: ${schema.deductions.dependent}`)
+
+  return `${lines.join('\n')}\n`
+}
+
+const parseTaxSchemaFromText = (
+  yamlText: string
+): { schema: TaxSchema | null; error: string | null } => {
+  const document = parseDocument(yamlText)
+  if (document.errors.length > 0) {
+    const firstError = document.errors[0]
+    return { schema: null, error: `YAMLの構文エラーがあります。${firstError.message}` }
+  }
+
+  const parsed = document.toJS()
+  if (!isTaxSchemaObject(parsed)) {
+    return {
+      schema: null,
+      error: '税金ルールYAMLの形式が不正です。必須フィールドと数値型を確認してください。'
+    }
+  }
+
+  return { schema: parsed, error: null }
 }
 
 export function TaxRuleDialog({
@@ -127,7 +281,7 @@ export function TaxRuleDialog({
     }
     const nextDraft = toDraftCopy(initialTaxSchema)
     setDraftTaxSchema(nextDraft)
-    setEditorText(JSON.stringify(nextDraft, null, 2))
+    setEditorText(toTaxSchemaYamlText(nextDraft))
     setEditorError(null)
   }, [isOpen, initialTaxSchema])
 
@@ -137,7 +291,7 @@ export function TaxRuleDialog({
         return prev
       }
       const next = updater(prev)
-      setEditorText(JSON.stringify(next, null, 2))
+      setEditorText(toTaxSchemaYamlText(next))
       setEditorError(null)
       return next
     })
@@ -151,6 +305,14 @@ export function TaxRuleDialog({
       return
     }
     setDraftTaxSchema(parsedResult.schema)
+    setEditorError(null)
+  }
+
+  const handleNormalizeEditorText = (): void => {
+    if (!draftTaxSchema) {
+      return
+    }
+    setEditorText(toTaxSchemaYamlText(draftTaxSchema))
     setEditorError(null)
   }
 
@@ -218,7 +380,7 @@ export function TaxRuleDialog({
                   _hover={{ bg: 'gray.100' }}
                   _selected={{ bg: 'teal.500', color: 'white' }}
                 >
-                  JSONエディットモード
+                  YAMLエディットモード
                 </Tab>
               </TabList>
 
@@ -591,14 +753,73 @@ export function TaxRuleDialog({
 
                 <TabPanel px={0} pt={0}>
                   <FormControl>
-                    <FormLabel>税金ルールJSON</FormLabel>
-                    <Textarea
-                      minH="500px"
-                      value={editorText}
-                      onChange={(e): void => handleEditorChange(e.target.value)}
-                      fontFamily="mono"
-                      bg="white"
-                    />
+                    <HStack mb={2} justifyContent="space-between" alignItems="center">
+                      <FormLabel mb={0} fontSize="sm" color="gray.700" fontWeight="semibold">
+                        税金ルールYAML
+                      </FormLabel>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        borderRadius="full"
+                        px={3}
+                        bg="white"
+                        _hover={{ bg: 'gray.100' }}
+                        onClick={handleNormalizeEditorText}
+                        isDisabled={!draftTaxSchema}
+                      >
+                        フォーマット
+                      </Button>
+                    </HStack>
+                    <Box
+                      borderRadius="2xl"
+                      p="1px"
+                      bgGradient={
+                        editorError
+                          ? 'linear(to-r, red.200, orange.100)'
+                          : 'linear(to-r, blue.200, cyan.100)'
+                      }
+                      boxShadow="0 18px 34px rgba(15, 23, 42, 0.11)"
+                    >
+                      <Box borderRadius="calc(var(--chakra-radii-2xl) - 1px)" overflow="hidden" bg="white">
+                        <HStack
+                          px={4}
+                          py={2.5}
+                          borderBottomWidth="1px"
+                          borderColor={editorError ? 'red.100' : 'blue.100'}
+                          bgGradient="linear(to-r, white, #f8fbff)"
+                          justifyContent="space-between"
+                        >
+                          <HStack spacing={2}>
+                            <Text fontSize="xs" fontWeight="bold" letterSpacing="0.08em" color="gray.600">
+                              YAML EDITOR
+                            </Text>
+                          </HStack>
+                          <Text
+                            fontSize="xs"
+                            color={editorError ? 'red.500' : 'teal.600'}
+                            fontWeight="semibold"
+                          >
+                            {editorError ? '構文エラーあり' : '構文OK'}
+                          </Text>
+                        </HStack>
+                        <CodeMirror
+                          value={editorText}
+                          onChange={(value): void => handleEditorChange(value)}
+                          height="520px"
+                          basicSetup={{
+                            lineNumbers: true,
+                            foldGutter: true,
+                            highlightActiveLine: true,
+                            highlightActiveLineGutter: true,
+                            bracketMatching: true,
+                            indentOnInput: true,
+                            tabSize: 2
+                          }}
+                          extensions={yamlEditorExtensions}
+                          theme={yamlEditorTheme}
+                        />
+                      </Box>
+                    </Box>
                   </FormControl>
                   {editorError && (
                     <Text mt={2} color="red.500" fontSize="sm">
@@ -606,7 +827,7 @@ export function TaxRuleDialog({
                     </Text>
                   )}
                   <Text mt={2} color="gray.600" fontSize="xs">
-                    JSONが有効である間は、編集内容が即時にダイアログ内へ反映されます。
+                    YAMLが有効である間は、編集内容が即時にダイアログ内へ反映されます。スペースは青点、タブは青矢印、行末空白は赤帯で可視化します。
                   </Text>
                 </TabPanel>
               </TabPanels>
