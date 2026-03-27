@@ -14,6 +14,8 @@ asarUnpack:
 win:
   executableName: Miraishi
   icon: './resources/icon.png'
+  # Linux/WSL での Windows ビルド時に wine を必須にしない
+  signAndEditExecutable: false
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
