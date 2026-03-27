@@ -1,4 +1,3 @@
-import React from 'react'
 import {
   Box,
   Button,
@@ -19,8 +18,9 @@ import {
   Text,
   VStack
 } from '@chakra-ui/react'
-import { FaPlus, FaTrash } from 'react-icons/fa'
 import type { Scenario } from '@myTypes/miraishi'
+import React from 'react'
+import { FaPlus, FaTrash } from 'react-icons/fa'
 import { INDUSTRY_OPTIONS, PREFECTURE_OPTIONS } from '../../../../shared/taxSchemaDefaults'
 
 interface ScenarioInputFormProps {
@@ -103,7 +103,7 @@ export const ScenarioInputForm = ({
           </Heading>
           <SimpleGrid columns={{ base: 1, md: 2, '2xl': 3 }} spacing={3}>
             <FormControl>
-              <FormLabel fontSize={LABEL_FONT_SIZE}>想定初任給 (月額)</FormLabel>
+              <FormLabel fontSize={LABEL_FONT_SIZE}>初任基本給 (月額)</FormLabel>
               <YenNumberInput
                 value={scenario.initialBasicSalary ?? 0}
                 onChange={(_, valueAsNumber): void =>
