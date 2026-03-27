@@ -10,14 +10,19 @@ import Store from 'electron-store'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
 import type { GraphViewSettings, PredictionResult, Scenario, TaxSchema } from '../types/miraishi'
-import { scenarioSchema } from './lib/validators'
+import { scenarioSchema, taxSchemaSchema } from './lib/validators'
 import { calculatePrediction } from './lib/calculator'
 
 // -----------------------------------------------------------------------------
 // 初期化
 // -----------------------------------------------------------------------------
 
-const store = new Store<{ scenarios: Scenario[] }>({
+type AppStore = {
+  scenarios: Scenario[]
+  taxSchema?: TaxSchema
+}
+
+const store = new Store<AppStore>({
   defaults: {
     scenarios: []
   }
@@ -29,7 +34,14 @@ const taxSchemaPath = join(__dirname, '../../resources/schema/tax_schema.json')
 let taxSchema: TaxSchema | null = null
 try {
   const rawData = fs.readFileSync(taxSchemaPath, 'utf-8')
-  taxSchema = JSON.parse(rawData)
+  const bundledTaxSchema = taxSchemaSchema.parse(JSON.parse(rawData))
+  const storedTaxSchema = store.get('taxSchema')
+  if (storedTaxSchema) {
+    taxSchema = taxSchemaSchema.parse(storedTaxSchema)
+  } else {
+    taxSchema = bundledTaxSchema
+    store.set('taxSchema', bundledTaxSchema)
+  }
   console.log('Tax schema loaded successfully.')
 } catch (error) {
   console.error('Failed to load tax schema:', error)
@@ -185,26 +197,77 @@ app.whenReady().then((): void => {
     }
   })
 
+  const handleGetTaxSchema = (): { success: boolean; taxSchema?: TaxSchema; error?: string } => {
+    try {
+      if (!taxSchema) {
+        throw new Error('Tax schema is not loaded.')
+      }
+      return { success: true, taxSchema }
+    } catch (error) {
+      if (error instanceof Error) return { success: false, error: error.message }
+      return { success: false, error: 'An unknown error occurred' }
+    }
+  }
+
+  const handleUpdateTaxSchema = (
+    _,
+    nextTaxSchema: TaxSchema
+  ): { success: boolean; taxSchema?: TaxSchema; error?: string } => {
+    try {
+      const validatedTaxSchema = taxSchemaSchema.parse(nextTaxSchema)
+      taxSchema = validatedTaxSchema
+      store.set('taxSchema', validatedTaxSchema)
+
+      // 税スキーマ変更時は全キャッシュを無効化
+      initialCalculationCache.clear()
+
+      return { success: true, taxSchema: validatedTaxSchema }
+    } catch (error) {
+      if (error instanceof Error) return { success: false, error: error.message }
+      return { success: false, error: 'An unknown error occurred' }
+    }
+  }
+
+  ipcMain.handle('get-tax-schema', handleGetTaxSchema)
+  ipcMain.handle('getTaxSchema', handleGetTaxSchema)
+  ipcMain.handle('update-tax-schema', handleUpdateTaxSchema)
+  ipcMain.handle('updateTaxSchema', handleUpdateTaxSchema)
+
   ipcMain.handle(
     'calculate-prediction',
     (
       _,
-      { scenario, settings }: { scenario: Scenario; settings: GraphViewSettings }
-    ): PredictionResult | { success: false; error: string } => {
-      const settingsString = JSON.stringify(settings)
-      const settingsHash = crypto.createHash('sha256').update(settingsString).digest('hex')
-      const cacheKey = `${scenario.id}-${settingsHash}`
-
-      if (initialCalculationCache.has(cacheKey)) {
-        console.log(`Returning cached result for key: ${cacheKey}`)
-        const cachedResult = initialCalculationCache.get(cacheKey)!
-        return cachedResult
+      {
+        scenario,
+        settings,
+        taxSchemaOverride
+      }: {
+        scenario: Scenario
+        settings: GraphViewSettings
+        taxSchemaOverride?: TaxSchema
       }
-
+    ): PredictionResult | { success: false; error: string } => {
       try {
-        if (!taxSchema) throw new Error('Tax schema is not loaded.')
+        const effectiveTaxSchema = taxSchemaOverride
+          ? taxSchemaSchema.parse(taxSchemaOverride)
+          : taxSchema
+        if (!effectiveTaxSchema) throw new Error('Tax schema is not loaded.')
 
-        const result = calculatePrediction({ scenario, settings }, taxSchema)
+        const cacheSource = {
+          settings,
+          taxSchema: effectiveTaxSchema
+        }
+        const settingsString = JSON.stringify(cacheSource)
+        const settingsHash = crypto.createHash('sha256').update(settingsString).digest('hex')
+        const cacheKey = `${scenario.id}-${settingsHash}`
+
+        if (initialCalculationCache.has(cacheKey)) {
+          console.log(`Returning cached result for key: ${cacheKey}`)
+          const cachedResult = initialCalculationCache.get(cacheKey)!
+          return cachedResult
+        }
+
+        const result = calculatePrediction({ scenario, settings }, effectiveTaxSchema)
 
         initialCalculationCache.set(cacheKey, result)
         console.log(`Result cached with key: ${cacheKey}`)

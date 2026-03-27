@@ -3,7 +3,7 @@
  * @description Jotaiを使用したグローバル状態管理のAtom定義
  */
 import { atom } from 'jotai'
-import type { GraphViewSettings, PredictionResult, Scenario } from '@myTypes/miraishi'
+import type { GraphViewSettings, PredictionResult, Scenario, TaxSchema } from '@myTypes/miraishi'
 
 // --- データ関連のAtom ---
 
@@ -101,6 +101,7 @@ export const deleteScenarioAtom = atom(null, async (get, set, scenarioId: string
 
 export const isControlPanelOpenAtom = atom(false)
 export const isGraphViewVisibleAtom = atom(false)
+export const taxSchemaOverrideAtom = atom<TaxSchema | null>(null)
 
 /**
  * グラフビューの表示設定
@@ -123,6 +124,7 @@ export const predictionResultsAtom = atom<{ scenarioId: string; result: Predicti
 export const calculatePredictionsAtom = atom(null, async (get, set) => {
   const scenarios = get(activeScenariosAtom)
   const settings = get(graphViewSettingsAtom)
+  const taxSchemaOverride = get(taxSchemaOverrideAtom)
 
   if (scenarios.length === 0) {
     set(predictionResultsAtom, [])
@@ -133,7 +135,8 @@ export const calculatePredictionsAtom = atom(null, async (get, set) => {
     scenarios.map(async (scenario) => {
       const result = await window.api.calculatePrediction({
         scenario,
-        settings
+        settings,
+        taxSchemaOverride: taxSchemaOverride ?? undefined
       })
       if ('details' in result) {
         return { scenarioId: scenario.id, result }

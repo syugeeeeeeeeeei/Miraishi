@@ -3,36 +3,49 @@
  * @description 左側に表示される開閉可能なコントロールパネルコンポーネント
  */
 import React, { useRef, useState } from 'react'
-import { Box, Button, Divider, Text, Tooltip, useDisclosure, VStack } from '@chakra-ui/react'
-import { FaPlus } from 'react-icons/fa'
+import { Box, Button, Divider, Text, Tooltip, useDisclosure, useToast, VStack } from '@chakra-ui/react'
+import { FaFileInvoiceDollar, FaInfoCircle, FaPlus, FaRegCopyright } from 'react-icons/fa'
 import { useAtom, useSetAtom } from 'jotai'
 import { motion } from 'framer-motion'
+import type { TaxSchema } from '@myTypes/miraishi'
 
 import {
   activeScenarioIdsAtom,
+  calculatePredictionsAtom,
   createScenarioAtom,
   deleteScenarioAtom,
   filteredScenariosAtom,
   isControlPanelOpenAtom,
-  searchQueryAtom
+  searchQueryAtom,
+  taxSchemaOverrideAtom
 } from '@renderer/store/atoms'
 import { PanelHeader } from './PanelHeader'
 import { ScenarioList } from './ScenarioList'
 import { DeleteScenarioDialog } from './DeleteScenarioDialog'
+import { SystemRadialMenu } from './SystemRadialMenu'
+import { TaxRuleDialog } from './TaxRuleDialog'
+import { defaultTaxSchema } from '@renderer/constants/defaultTaxSchema'
 
 const MotionButton = motion.create(Button)
+const TAX_SCHEMA_LOCAL_STORAGE_KEY = 'miraishi.taxSchema.localFallback'
 
 export function ControlPanel(): React.JSX.Element {
   const [scenariosToDisplay] = useAtom(filteredScenariosAtom)
   const createScenario = useSetAtom(createScenarioAtom)
   const deleteScenario = useSetAtom(deleteScenarioAtom)
+  const calculatePredictions = useSetAtom(calculatePredictionsAtom)
+  const setTaxSchemaOverride = useSetAtom(taxSchemaOverrideAtom)
   const [activeIds, setActiveIds] = useAtom(activeScenarioIdsAtom)
   const [isOpen, setIsOpen] = useAtom(isControlPanelOpenAtom)
   const [searchQuery, setSearchQuery] = useAtom(searchQueryAtom)
+  const toast = useToast()
 
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false)
   const [isClickOpen, setIsClickOpen] = useState<boolean>(false)
   const [targetIdToDelete, setTargetIdToDelete] = useState<string | null>(null)
+  const [isTaxRuleDialogOpen, setIsTaxRuleDialogOpen] = useState<boolean>(false)
+  const [isTaxSchemaLoading, setIsTaxSchemaLoading] = useState<boolean>(false)
+  const [taxSchemaForDialog, setTaxSchemaForDialog] = useState<TaxSchema | null>(null)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -41,6 +54,13 @@ export function ControlPanel(): React.JSX.Element {
   const timerRef = useRef<number | null>(null)
   const leaveTimerRef = useRef<number | null>(null)
   const isHoveringRef = useRef<boolean>(false)
+
+  const clearHoverOpenTimer = (): void => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+  }
 
   const handleDeleteClick = (scenarioId: string): void => {
     setTargetIdToDelete(scenarioId)
@@ -67,7 +87,7 @@ export function ControlPanel(): React.JSX.Element {
     })
   }
 
-  const handleMouseEnter = (): void => {
+  const handlePanelMouseMove = (): void => {
     isHoveringRef.current = true
 
     if (leaveTimerRef.current !== null) {
@@ -75,25 +95,24 @@ export function ControlPanel(): React.JSX.Element {
       leaveTimerRef.current = null
     }
 
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current)
+    if (isOpen || isClickOpen) {
+      return
     }
 
-    timerRef.current = window.setTimeout(() => {
-      if (isHoveringRef.current) {
-        setIsOpen(true)
-      }
-      timerRef.current = null
-    }, 200)
+    if (timerRef.current === null) {
+      timerRef.current = window.setTimeout(() => {
+        if (isHoveringRef.current && !isClickOpen) {
+          setIsOpen(true)
+        }
+        timerRef.current = null
+      }, 200)
+    }
   }
 
   const handleMouseLeave = (): void => {
     isHoveringRef.current = false
 
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
+    clearHoverOpenTimer()
 
     leaveTimerRef.current = window.setTimeout(() => {
       if (!isClickOpen) {
@@ -122,11 +141,7 @@ export function ControlPanel(): React.JSX.Element {
   const handleIconButtonMouseEnter = (e: React.MouseEvent): void => {
     e.stopPropagation()
     isHoveringRef.current = false
-
-    if (timerRef.current !== null) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
+    clearHoverOpenTimer()
   }
 
   const handleIconButtonMouseLeave = (e: React.MouseEvent): void => {
@@ -153,6 +168,249 @@ export function ControlPanel(): React.JSX.Element {
     }, 100)
   }
 
+  const isNoHandlerRegisteredError = (error: unknown, channel: string): boolean => {
+    return (
+      error instanceof Error &&
+      error.message.includes(`No handler registered for '${channel}'`)
+    )
+  }
+
+  const loadTaxSchemaFromLocalStorage = (): TaxSchema | null => {
+    try {
+      const raw = window.localStorage.getItem(TAX_SCHEMA_LOCAL_STORAGE_KEY)
+      if (!raw) {
+        return null
+      }
+      const parsed = JSON.parse(raw)
+      if (!parsed || typeof parsed !== 'object') {
+        return null
+      }
+      return parsed as TaxSchema
+    } catch {
+      return null
+    }
+  }
+
+  const saveTaxSchemaToLocalStorage = (schema: TaxSchema): void => {
+    try {
+      window.localStorage.setItem(TAX_SCHEMA_LOCAL_STORAGE_KEY, JSON.stringify(schema))
+    } catch {
+      // localStorage 書き込み失敗時は無視（IPC保存を優先）
+    }
+  }
+
+  const getTaxSchemaFromApi = async (): Promise<{
+    success: boolean
+    taxSchema?: TaxSchema
+    error?: string
+  }> => {
+    const apiWithOptional = window.api as typeof window.api & {
+      getTaxSchema?: () => Promise<{ success: boolean; taxSchema?: TaxSchema; error?: string }>
+    }
+    if (typeof apiWithOptional.getTaxSchema === 'function') {
+      try {
+        return await apiWithOptional.getTaxSchema()
+      } catch (error) {
+        if (!isNoHandlerRegisteredError(error, 'get-tax-schema')) {
+          throw error
+        }
+      }
+    }
+
+    const fallbackInvoke = (window as any)?.electron?.ipcRenderer?.invoke
+    if (typeof fallbackInvoke === 'function') {
+      try {
+        return await fallbackInvoke('get-tax-schema')
+      } catch (error) {
+        if (isNoHandlerRegisteredError(error, 'get-tax-schema')) {
+          return fallbackInvoke('getTaxSchema')
+        }
+        throw error
+      }
+    }
+
+    throw new Error('税金ルール取得APIが見つかりません。アプリ再起動後に再試行してください。')
+  }
+
+  const updateTaxSchemaFromApi = async (
+    nextTaxSchema: TaxSchema
+  ): Promise<{ success: boolean; taxSchema?: TaxSchema; error?: string }> => {
+    const apiWithOptional = window.api as typeof window.api & {
+      updateTaxSchema?: (
+        schema: TaxSchema
+      ) => Promise<{ success: boolean; taxSchema?: TaxSchema; error?: string }>
+    }
+    if (typeof apiWithOptional.updateTaxSchema === 'function') {
+      try {
+        return await apiWithOptional.updateTaxSchema(nextTaxSchema)
+      } catch (error) {
+        if (!isNoHandlerRegisteredError(error, 'update-tax-schema')) {
+          throw error
+        }
+      }
+    }
+
+    const fallbackInvoke = (window as any)?.electron?.ipcRenderer?.invoke
+    if (typeof fallbackInvoke === 'function') {
+      try {
+        return await fallbackInvoke('update-tax-schema', nextTaxSchema)
+      } catch (error) {
+        if (isNoHandlerRegisteredError(error, 'update-tax-schema')) {
+          return fallbackInvoke('updateTaxSchema', nextTaxSchema)
+        }
+        throw error
+      }
+    }
+
+    throw new Error('税金ルール更新APIが見つかりません。アプリ再起動後に再試行してください。')
+  }
+
+  const openTaxRuleDialog = async (): Promise<void> => {
+    setIsTaxSchemaLoading(true)
+    try {
+      const result = await getTaxSchemaFromApi()
+      if (!result.success || !result.taxSchema) {
+        throw new Error(result.error ?? '税金ルールの読み込みに失敗しました。')
+      }
+      saveTaxSchemaToLocalStorage(result.taxSchema)
+      setTaxSchemaForDialog(result.taxSchema)
+      setIsTaxRuleDialogOpen(true)
+    } catch (error) {
+      if (
+        isNoHandlerRegisteredError(error, 'get-tax-schema') ||
+        isNoHandlerRegisteredError(error, 'getTaxSchema')
+      ) {
+        const fallbackSchema =
+          loadTaxSchemaFromLocalStorage() ?? taxSchemaForDialog ?? defaultTaxSchema
+        setTaxSchemaForDialog(fallbackSchema)
+        setTaxSchemaOverride(fallbackSchema)
+        setIsTaxRuleDialogOpen(true)
+        toast({
+          title: '税金ルールをローカルモードで開きました。',
+          description: '取得APIが未登録のため、ローカル保存スキーマを使用しています。',
+          status: 'info',
+          duration: 3000,
+          isClosable: true,
+          position: 'bottom-right'
+        })
+        return
+      }
+
+      toast({
+        title: '税金ルールの読み込みに失敗しました。',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        status: 'error',
+        duration: 2500,
+        isClosable: true,
+        position: 'bottom-right'
+      })
+    } finally {
+      setIsTaxSchemaLoading(false)
+    }
+  }
+
+  const closeTaxRuleDialogWithoutChanges = (): void => {
+    setIsTaxRuleDialogOpen(false)
+  }
+
+  const handleTaxRuleConfirm = async (nextTaxSchema: TaxSchema): Promise<void> => {
+    setTaxSchemaForDialog(nextTaxSchema)
+    setTaxSchemaOverride(nextTaxSchema)
+    saveTaxSchemaToLocalStorage(nextTaxSchema)
+    await calculatePredictions()
+
+    try {
+      const result = await updateTaxSchemaFromApi(nextTaxSchema)
+      if (!result.success || !result.taxSchema) {
+        throw new Error(result.error ?? '税金ルールの更新に失敗しました。')
+      }
+
+      saveTaxSchemaToLocalStorage(result.taxSchema)
+      setTaxSchemaForDialog(result.taxSchema)
+      setTaxSchemaOverride(result.taxSchema)
+      setIsTaxRuleDialogOpen(false)
+
+      toast({
+        title: '税金ルールを更新しました。',
+        description: '新しいルールを保存し、全シナリオを再計算しました。',
+        status: 'success',
+        duration: 2000,
+        isClosable: true,
+        position: 'bottom-right'
+      })
+    } catch (error) {
+      if (
+        isNoHandlerRegisteredError(error, 'update-tax-schema') ||
+        isNoHandlerRegisteredError(error, 'updateTaxSchema')
+      ) {
+        setIsTaxRuleDialogOpen(false)
+        toast({
+          title: '税金ルールを保存しました（ローカルモード）。',
+          description: '保存API未登録のため、アプリ内ローカル保存で再計算を完了しました。',
+          status: 'success',
+          duration: 2600,
+          isClosable: true,
+          position: 'bottom-right'
+        })
+        return
+      }
+
+      toast({
+        title: '税金ルールの更新に失敗しました。',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        status: 'error',
+        duration: 2500,
+        isClosable: true,
+        position: 'bottom-right'
+      })
+    }
+  }
+
+  const showInfoPlaceholder = (): void => {
+    toast({
+      title: 'インフォメニュー',
+      description: '今後追加予定です。',
+      status: 'info',
+      duration: 1500,
+      isClosable: true,
+      position: 'bottom-right'
+    })
+  }
+
+  const showCreditPlaceholder = (): void => {
+    toast({
+      title: 'クレジットメニュー',
+      description: '今後追加予定です。',
+      status: 'info',
+      duration: 1500,
+      isClosable: true,
+      position: 'bottom-right'
+    })
+  }
+
+  const systemMenuItems = [
+    {
+      id: 'tax-rule',
+      label: '税金ルール',
+      icon: FaFileInvoiceDollar,
+      onClick: (): void => {
+        void openTaxRuleDialog()
+      }
+    },
+    {
+      id: 'info',
+      label: 'インフォ',
+      icon: FaInfoCircle,
+      onClick: showInfoPlaceholder
+    },
+    {
+      id: 'credits',
+      label: 'クレジット',
+      icon: FaRegCopyright,
+      onClick: showCreditPlaceholder
+    }
+  ]
+
   return (
     <>
       <Box
@@ -164,7 +422,7 @@ export function ControlPanel(): React.JSX.Element {
         zIndex={10}
         transition="width 0.2s ease-in-out"
         flexShrink={0}
-        onMouseEnter={handleMouseEnter}
+        onMouseMove={handlePanelMouseMove}
         onMouseLeave={handleMouseLeave}
       >
         <VStack align="stretch" spacing={4} h="100%">
@@ -215,11 +473,23 @@ export function ControlPanel(): React.JSX.Element {
         </VStack>
       </Box>
 
+      <Box position="fixed" left="14px" bottom="24px" zIndex={30}>
+        <SystemRadialMenu items={systemMenuItems} />
+      </Box>
+
       <DeleteScenarioDialog
         isOpen={isAlertOpen}
         cancelRef={cancelRef}
         onClose={onAlertClose}
         onConfirmDelete={confirmDelete}
+      />
+
+      <TaxRuleDialog
+        isOpen={isTaxRuleDialogOpen}
+        isLoading={isTaxSchemaLoading}
+        initialTaxSchema={taxSchemaForDialog}
+        onCloseWithoutChanges={closeTaxRuleDialogWithoutChanges}
+        onConfirm={handleTaxRuleConfirm}
       />
     </>
   )

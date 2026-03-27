@@ -86,3 +86,34 @@ export const scenarioSchema = z.object({
 
 // 配列としてのシナリオ
 export const scenariosSchema = z.array(scenarioSchema)
+
+// Tax schema
+const incomeTaxRateSchema = z.object({
+  threshold: z.number().nullable(),
+  rate: z.number().min(0),
+  deduction: z.number().min(0)
+})
+
+export const taxSchemaSchema = z.object({
+  version: z.string().min(1),
+  incomeTaxRates: z.array(incomeTaxRateSchema).min(1),
+  residentTaxRate: z.number().min(0),
+  socialInsurance: z.object({
+    healthInsurance: z.object({
+      rate: z.number().min(0),
+      maxStandardRemuneration: z.number().min(0)
+    }),
+    pension: z.object({
+      rate: z.number().min(0),
+      maxStandardRemuneration: z.number().min(0)
+    }),
+    employmentInsurance: z.object({
+      rate: z.number().min(0)
+    })
+  }),
+  deductions: z.object({
+    basic: z.number().min(0),
+    spouse: z.number().min(0),
+    dependent: z.number().min(0)
+  })
+})

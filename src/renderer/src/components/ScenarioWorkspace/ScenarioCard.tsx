@@ -2,7 +2,7 @@
  * @file src/renderer/src/components/ScenarioWorkspace/ScenarioCard.tsx
  * @description 入力ビューと結果ビューを切り替えるカードUIのコンテナ
  */
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Box, Flex, Grid, Input, useToast } from '@chakra-ui/react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import {
@@ -20,47 +20,98 @@ interface ScenarioCardProps {
   predictionResult: PredictionResult | null
 }
 
+const applyNestedStateUpdate = (source: Scenario, path: string, value: unknown): Scenario => {
+  const keys = path.split('.')
+  const nextState = JSON.parse(JSON.stringify(source))
+  let current = nextState
+  for (let i = 0; i < keys.length - 1; i++) {
+    current = current[keys[i]]
+  }
+  current[keys[keys.length - 1]] = value
+  return nextState
+}
+
 export function ScenarioCard({ scenario, predictionResult }: ScenarioCardProps): React.JSX.Element {
   const updateScenario = useSetAtom(updateScenarioAtom)
   const calculatePredictions = useSetAtom(calculatePredictionsAtom)
   const [editableScenario, setEditableScenario] = useState<Scenario>(scenario)
+  const editableScenarioRef = useRef<Scenario>(scenario)
   const toast = useToast()
   const graphViewSettings = useAtomValue(graphViewSettingsAtom)
 
   useEffect((): void => {
     setEditableScenario(scenario)
+    editableScenarioRef.current = scenario
   }, [scenario])
 
   const updateNestedState = useCallback((path: string, value: any): void => {
     setEditableScenario((prev) => {
-      const keys = path.split('.')
-      const newState = JSON.parse(JSON.stringify(prev))
-      let current = newState
-      for (let i = 0; i < keys.length - 1; i++) {
-        current = current[keys[i]]
-      }
-      current[keys[keys.length - 1]] = value
-      return newState
+      const next = applyNestedStateUpdate(prev, path, value)
+      editableScenarioRef.current = next
+      return next
     })
   }, [])
 
+  const persistScenario = useCallback(
+    async (scenarioToPersist: Scenario): Promise<void> => {
+      if (JSON.stringify(scenarioToPersist) === JSON.stringify(scenario)) {
+        return
+      }
+
+      await updateScenario(scenarioToPersist)
+      await calculatePredictions()
+
+      toast({
+        title: '自動保存・再計算が実行されました。',
+        description: `「${scenarioToPersist.title}」の変更が反映されました。`,
+        status: 'info',
+        duration: 2000,
+        isClosable: true,
+        position: 'bottom-right'
+      })
+    },
+    [scenario, updateScenario, calculatePredictions, toast]
+  )
+
   const handleSaveAndRecalculate = useCallback(async (): Promise<void> => {
-    if (JSON.stringify(editableScenario) === JSON.stringify(scenario)) {
+    const latestScenario = editableScenarioRef.current
+    if (!latestScenario) {
       return
     }
+    await persistScenario(latestScenario)
+  }, [persistScenario])
 
-    await updateScenario(editableScenario)
-    await calculatePredictions()
+  const handleBonusModeSwitch = useCallback(
+    (mode: 'fixed' | 'basicSalaryMonths'): void => {
+      const currentScenario = editableScenarioRef.current
+      const currentMode = currentScenario.bonus?.mode ?? 'fixed'
+      if (currentMode === mode) {
+        return
+      }
 
-    toast({
-      title: '自動保存・再計算が実行されました。',
-      description: `「${editableScenario.title}」の変更が反映されました。`,
-      status: 'info',
-      duration: 2000,
-      isClosable: true,
-      position: 'bottom-right'
-    })
-  }, [editableScenario, scenario, updateScenario, calculatePredictions, toast])
+      const currentMonths = currentScenario.bonus?.months ?? 2
+      const nextBonus =
+        mode === 'basicSalaryMonths'
+          ? { mode, months: currentMonths > 0 ? currentMonths : 2 }
+          : { mode, months: currentMonths }
+      const nextScenario: Scenario = {
+        ...currentScenario,
+        bonus: nextBonus
+      }
+      editableScenarioRef.current = nextScenario
+      setEditableScenario(nextScenario)
+      void persistScenario(nextScenario)
+    },
+    [persistScenario]
+  )
+
+  const handleBonusInputBlur = useCallback((e: React.FocusEvent<HTMLInputElement>): void => {
+    const relatedTarget = e.relatedTarget as HTMLElement | null
+    if (relatedTarget?.closest('[data-role="bonus-mode-switch"]')) {
+      return
+    }
+    void persistScenario(editableScenarioRef.current)
+  }, [persistScenario])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Enter') {
@@ -134,6 +185,8 @@ export function ScenarioCard({ scenario, predictionResult }: ScenarioCardProps):
             <ScenarioInputForm
               scenario={editableScenario}
               updateNestedState={updateNestedState}
+              onBonusModeSwitch={handleBonusModeSwitch}
+              onBonusInputBlur={handleBonusInputBlur}
               handleKeyDown={handleKeyDown}
               addAllowance={addAllowance}
               removeAllowance={removeAllowance}

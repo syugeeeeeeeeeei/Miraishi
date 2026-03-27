@@ -25,6 +25,8 @@ import type { Scenario } from '@myTypes/miraishi'
 interface ScenarioInputFormProps {
   scenario: Scenario
   updateNestedState: (path: string, value: any) => void
+  onBonusModeSwitch: (mode: 'fixed' | 'basicSalaryMonths') => void
+  onBonusInputBlur: (e: React.FocusEvent<HTMLInputElement>) => void
   handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void
   addAllowance: () => void
   removeAllowance: (index: number) => void
@@ -46,6 +48,7 @@ interface YenNumberInputProps {
   value: number
   onChange: (valueAsString: string, valueAsNumber: number) => void
   handleKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void
+  onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void
   placeholder?: string
   min?: number
 }
@@ -54,6 +57,7 @@ const YenNumberInput = ({
   value,
   onChange,
   handleKeyDown,
+  onBlur,
   placeholder,
   min = 0
 }: YenNumberInputProps): React.JSX.Element => (
@@ -64,6 +68,7 @@ const YenNumberInput = ({
         placeholder={placeholder}
         bg="white"
         onKeyDown={handleKeyDown}
+        onBlur={onBlur}
         inputMode="numeric"
       />
       <InputRightElement w="3.2rem" color="gray.500" fontSize="sm" pointerEvents="none">
@@ -76,6 +81,8 @@ const YenNumberInput = ({
 export const ScenarioInputForm = ({
   scenario,
   updateNestedState,
+  onBonusModeSwitch,
+  onBonusInputBlur,
   handleKeyDown,
   addAllowance,
   removeAllowance
@@ -113,24 +120,16 @@ export const ScenarioInputForm = ({
                   <Button
                     colorScheme={isBonusLinkedToBasic ? 'gray' : 'blue'}
                     variant={isBonusLinkedToBasic ? 'outline' : 'solid'}
-                    onClick={(): void =>
-                      updateNestedState('bonus', {
-                        mode: 'fixed',
-                        months: bonusMonths
-                      })
-                    }
+                    data-role="bonus-mode-switch"
+                    onClick={(): void => onBonusModeSwitch('fixed')}
                   >
                     固定額
                   </Button>
                   <Button
                     colorScheme={isBonusLinkedToBasic ? 'blue' : 'gray'}
                     variant={isBonusLinkedToBasic ? 'solid' : 'outline'}
-                    onClick={(): void =>
-                      updateNestedState('bonus', {
-                        mode: 'basicSalaryMonths',
-                        months: bonusMonths > 0 ? bonusMonths : 2
-                      })
-                    }
+                    data-role="bonus-mode-switch"
+                    onClick={(): void => onBonusModeSwitch('basicSalaryMonths')}
                   >
                     基本給連動
                   </Button>
@@ -156,6 +155,7 @@ export const ScenarioInputForm = ({
                         placeholder="例: 2.0"
                         bg="white"
                         onKeyDown={handleKeyDown}
+                        onBlur={onBonusInputBlur}
                         inputMode="decimal"
                       />
                       <InputRightElement w="4.4rem" color="gray.500" fontSize="sm" pointerEvents="none">
@@ -171,6 +171,7 @@ export const ScenarioInputForm = ({
                     }
                     placeholder="例: 600000"
                     handleKeyDown={handleKeyDown}
+                    onBlur={onBonusInputBlur}
                   />
                 )}
               </VStack>

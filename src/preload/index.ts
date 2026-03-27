@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import type { GraphViewSettings, PredictionResult, Scenario } from '../types/miraishi'
+import type { GraphViewSettings, PredictionResult, Scenario, TaxSchema } from '../types/miraishi'
 
 // Rendererプロセスに公開するAPIを定義
 export const api = {
@@ -15,14 +15,22 @@ export const api = {
     ipcRenderer.invoke('update-scenario', updatedScenario),
   deleteScenario: (scenarioId: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('delete-scenario', scenarioId),
+  getTaxSchema: (): Promise<{ success: boolean; taxSchema?: TaxSchema; error?: string }> =>
+    ipcRenderer.invoke('get-tax-schema'),
+  updateTaxSchema: (
+    nextTaxSchema: TaxSchema
+  ): Promise<{ success: boolean; taxSchema?: TaxSchema; error?: string }> =>
+    ipcRenderer.invoke('update-tax-schema', nextTaxSchema),
   calculatePrediction: ({
     scenario,
-    settings
+    settings,
+    taxSchemaOverride
   }: {
     scenario: Scenario
     settings: GraphViewSettings
+    taxSchemaOverride?: TaxSchema
   }): Promise<PredictionResult | { success: false; error?: string }> =>
-    ipcRenderer.invoke('calculate-prediction', { scenario, settings })
+    ipcRenderer.invoke('calculate-prediction', { scenario, settings, taxSchemaOverride })
 }
 
 if (process.contextIsolated) {
