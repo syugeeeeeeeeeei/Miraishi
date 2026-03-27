@@ -1,0 +1,69 @@
+# 変更タイムライン
+
+## 2026-03-27
+- [PDF出力失敗修正_dataURL長大化対策](../archive/legacy_docs_2026Q1/PDF出力失敗修正_dataURL長大化対策/walkthrough.md): [x] PDF出力失敗原因（ERR_INVALID_URL）を特定
+- [PDF文字化け修正_フォント埋め込みとUTF8強化](../archive/legacy_docs_2026Q1/PDF文字化け修正_フォント埋め込みとUTF8強化/walkthrough.md): [x] PDF文字化けの原因を調査
+- [シナリオ入力_初任給固定残業年間休日対応](../archive/legacy_docs_2026Q1/シナリオ入力_初任給固定残業年間休日対応/walkthrough.md): [x] シナリオ入力項目に 初任給（固定残業代込み） を追加
+- [シナリオ比較PDFエクスポート仕様策定](../archive/legacy_docs_2026Q1/シナリオ比較PDFエクスポート仕様策定/walkthrough.md): [x] 要件整理（複数シナリオ比較・指定年までの成長情報）
+- [シナリオ比較PDFエクスポート実装](../archive/legacy_docs_2026Q1/シナリオ比較PDFエクスポート実装/walkthrough.md): [x] PDFエクスポート用のリクエスト/レスポンス型を追加
+- [ドキュメント圧縮整理方針](../archive/legacy_docs_2026Q1/ドキュメント圧縮整理方針/walkthrough.md): docs/readmes 以外に蓄積された修正ドキュメント群（各トピックの task.md / implementation_plan.md / walkthrough.md）を圧縮し、保守しやすく整理する方針を策定する。
+- [メタ付きスキーマ作成と検証前適用禁止](../archive/legacy_docs_2026Q1/メタ付きスキーマ作成と検証前適用禁止/walkthrough.md): [x] name/description を含む新仕様スキーマファイルを作成
+- [リポジトリ内容分析](../archive/legacy_docs_2026Q1/リポジトリ内容分析/walkthrough.md): [x] リポジトリ全体の構成（README・docs・src・設定ファイル）を確認する
+- [全ルール項目メタ拡張と新仕様スキーマ更新](../archive/legacy_docs_2026Q1/全ルール項目メタ拡張と新仕様スキーマ更新/walkthrough.md): [x] uiMeta.items を全ルール項目へ網羅拡張
+- [税制スキーマ_文字式DSL対応](../archive/legacy_docs_2026Q1/税制スキーマ_文字式DSL対応/walkthrough.md): [x] formula.steps[].expr を文字式中心で扱えるよう型を更新
+- [税制スキーマ刷新_エディタ中心_DSL履歴対応](../archive/legacy_docs_2026Q1/税制スキーマ刷新_エディタ中心_DSL履歴対応/walkthrough.md): [x] TaxSchemaV2 の型・デフォルト・V1移行を追加
+- [税制スキーマ項目メタ情報と確認画面アコーディオン](../archive/legacy_docs_2026Q1/税制スキーマ項目メタ情報と確認画面アコーディオン/walkthrough.md): [x] 税制スキーマに項目メタ情報（name/description）の受け皿を追加
+- [計算式ステップ項目削除と表示文言修正](../archive/legacy_docs_2026Q1/計算式ステップ項目削除と表示文言修正/walkthrough.md): [x] 確認画面の項目一覧から formula.steps を除外
+- [追加機能棚卸しとドキュメント更新](../archive/legacy_docs_2026Q1/追加機能棚卸しとドキュメント更新/walkthrough.md): これまで追加した主要機能を再棚卸しする。
+- [重複スキーマファイル整理](../archive/legacy_docs_2026Q1/重複スキーマファイル整理/walkthrough.md): [x] tax_schema.yaml と tax_schema_with_meta.yaml の差分確認
+
+## 日付記載なし
+- [A4縦PDFとOptionMenu分離](../archive/legacy_docs_2026Q1/A4縦PDFとOptionMenu分離/walkthrough.md): 比較レポートPDFの出力サイズを A4 縦向きにする。
+- [CodeMirror_行高微調整](../archive/legacy_docs_2026Q1/CodeMirror_行高微調整/walkthrough.md): CodeMirror の行の高さを少し小さくする。
+- [add_bonus_mode_switch_fixed_or_salary_linked](../archive/legacy_docs_2026Q1/add_bonus_mode_switch_fixed_or_salary_linked/walkthrough.md): 固定額モード（従来どおり）
+- [add_calculation_flow_to_result_dialog](../archive/legacy_docs_2026Q1/add_calculation_flow_to_result_dialog/walkthrough.md): ユーザーが「なぜこの金額になったのか」を追跡できるようにする。
+- [add_previous_year_income_input_for_resident_tax](../archive/legacy_docs_2026Q1/add_previous_year_income_input_for_resident_tax/walkthrough.md): シナリオ入力に「前年度収入（住民税計算用）」を追加する。
+- [adjust_tax_rule_tab_spacing_and_gray_bg](../archive/legacy_docs_2026Q1/adjust_tax_rule_tab_spacing_and_gray_bg/walkthrough.md): 税金ルールダイアログのモード切替タブについて、フォームモード時にヘッダーとの間に見える上部の隙間を解消する。
+- [bonus_recalculation_on_toggle_and_blur](../archive/legacy_docs_2026Q1/bonus_recalculation_on_toggle_and_blur/walkthrough.md): ボーナスの「固定額 / 基本給連動」切り替えボタンを押した時点で再計算する。
+- [documentation_migration_to_docs_readmes](../archive/legacy_docs_2026Q1/documentation_migration_to_docs_readmes/walkthrough.md): [x] 旧 documents の構成と参照箇所を確認
+- [enable_wheel_based_scenario_switching](../archive/legacy_docs_2026Q1/enable_wheel_based_scenario_switching/walkthrough.md): 入力要素（input 等）にフォーカス中は切り替えを無効にする。
+- [fix_formula_mojibake_in_calculation_flow_dialog](../archive/legacy_docs_2026Q1/fix_formula_mojibake_in_calculation_flow_dialog/walkthrough.md): Code コンポーネントの等幅フォントが日本語・一部記号に弱く、環境依存で文字化けが発生している可能性。
+- [fix_graphview_chart_font_mojibake](../archive/legacy_docs_2026Q1/fix_graphview_chart_font_mojibake/walkthrough.md): [x] グラフタイトル・凡例の文字化け再発箇所を特定
+- [fix_radial_menu_clipping_and_tax_schema_handler_fallback](../archive/legacy_docs_2026Q1/fix_radial_menu_clipping_and_tax_schema_handler_fallback/walkthrough.md): 歯車クリックで展開する円形メニューのアイコンが見切れないようにする。
+- [fix_salary_growth_recalculation_timing](../archive/legacy_docs_2026Q1/fix_salary_growth_recalculation_timing/walkthrough.md): 給与成長率を高く設定しても、結果表示が微増のままに見える。
+- [fix_scenario_workspace_card_contrast_and_window_layout](../archive/legacy_docs_2026Q1/fix_scenario_workspace_card_contrast_and_window_layout/walkthrough.md): 入力項目カードが背景と同化してカード感が弱い。
+- [fix_settings_menu_hover_icon_and_tax_api_fallback](../archive/legacy_docs_2026Q1/fix_settings_menu_hover_icon_and_tax_api_fallback/walkthrough.md): サイドパネルが閉じている状態で設定メニュー（歯車）にホバーしても、サイドパネルが自動で開かないようにする。
+- [fix_tax_rule_api_compatibility_and_local_fallback](../archive/legacy_docs_2026Q1/fix_tax_rule_api_compatibility_and_local_fallback/walkthrough.md): 税金ルールメニュー起動時に以下の互換モード警告が表示される問題を解消する。
+- [fix_wsl_font_mojibake](../archive/legacy_docs_2026Q1/fix_wsl_font_mojibake/walkthrough.md): [x] 文字化けの原因切り分け（エンコード/フォント適用）
+- [floating_settings_menu_and_sticky_tax_tabs](../archive/legacy_docs_2026Q1/floating_settings_menu_and_sticky_tax_tabs/walkthrough.md): 設定メニューアイコンがサイドパネルの開閉に影響されて位置ずれするため、サイドパネルから独立したフローティングアイコンに変更する。
+- [highlightWhitespace_デフォルト適用](../archive/legacy_docs_2026Q1/highlightWhitespace_デフォルト適用/walkthrough.md): 現在の独自スペース可視化スタイルを一度削除する。
+- [improve_scenario_workspace_form_units_and_usability](../archive/legacy_docs_2026Q1/improve_scenario_workspace_form_units_and_usability/walkthrough.md): 金額入力フォームに通貨単位（円）を表示する。
+- [introduce_desktop_two_pane_scenario_workspace](../archive/legacy_docs_2026Q1/introduce_desktop_two_pane_scenario_workspace/walkthrough.md): [x] ScenarioWorkspace のスカスカ要因を確認
+- [raise_radial_menu_vertical_position](../archive/legacy_docs_2026Q1/raise_radial_menu_vertical_position/walkthrough.md): 一番右のアイコン下端が切れないよう、メニュー全体を少し上へ移動する。
+- [refactor_controlpanel_graphview_header](../archive/legacy_docs_2026Q1/refactor_controlpanel_graphview_header/walkthrough.md): [x] ControlPanel を責務分離（ヘッダー/一覧/削除ダイアログ）
+- [remove_fixed_overtime_fixed_amount_mode](../archive/legacy_docs_2026Q1/remove_fixed_overtime_fixed_amount_mode/walkthrough.md): 入力の主軸は想定初任給とする。
+- [rename_renderer_component_structure](../archive/legacy_docs_2026Q1/rename_renderer_component_structure/walkthrough.md): [x] renderer/src/components の現行命名を棚卸し
+- [repository_analysis_architecture_review](../archive/legacy_docs_2026Q1/repository_analysis_architecture_review/walkthrough.md): [x] .env にアクセスせず、リポジトリ構成を把握する
+- [tax_rule_editor_with_radial_menu](../archive/legacy_docs_2026Q1/tax_rule_editor_with_radial_menu/walkthrough.md): サイドパネル最下部に歯車アイコンを配置。
+- [tune_wheel_sensitivity_and_scroll_slide_direction](../archive/legacy_docs_2026Q1/tune_wheel_sensitivity_and_scroll_slide_direction/walkthrough.md): ホイール感度をもう少し高くする。
+- [use_symbolic_operators_in_formula_text](../archive/legacy_docs_2026Q1/use_symbolic_operators_in_formula_text/walkthrough.md): かける: ×
+- [yamlエディター_スペース間隔調整](../archive/legacy_docs_2026Q1/yamlエディター_スペース間隔調整/walkthrough.md): YAMLエディターで表示しているスペース可視化ドットの間隔が狭すぎるため、間隔を広げる。
+- [yamlエディター_モダンUI化](../archive/legacy_docs_2026Q1/yamlエディター_モダンUI化/walkthrough.md): YAML エディターを、よりモダンで見た目と操作感の良い UI に改善する。
+- [yamlエディター_モダン見た目再調整](../archive/legacy_docs_2026Q1/yamlエディター_モダン見た目再調整/walkthrough.md): YAML エディターを「機能追加」ではなく「モダンな見た目・デザイン」重視で再調整する。
+- [yamlエディター_可読性改善](../archive/legacy_docs_2026Q1/yamlエディター_可読性改善/walkthrough.md): 税制ルールの YAML エディターで、インデントとブロック構造が見づらい問題を改善する。
+- [yamlエディター_文字幅と文字サイズ拡大](../archive/legacy_docs_2026Q1/yamlエディター_文字幅と文字サイズ拡大/walkthrough.md): YAML エディターの文字幅と文字サイズを、現状より大きくして読みやすくする。
+- [yamlエディター_空白可視化と文字化け再修正](../archive/legacy_docs_2026Q1/yamlエディター_空白可視化と文字化け再修正/walkthrough.md): WSL GUI 環境で YAML エディターの日本語等幅フォントが文字化けする問題を修正する。
+- [yamlエディター_空白表示スタイル改善](../archive/legacy_docs_2026Q1/yamlエディター_空白表示スタイル改善/walkthrough.md): YAML エディターで、空白スペース・タブの横幅が小さく見える問題を改善する。
+- [yamlエディター_見た目微調整_フォントと空白ドット](../archive/legacy_docs_2026Q1/yamlエディター_見た目微調整_フォントと空白ドット/walkthrough.md): Apple風の赤・黄・緑マークを削除する。
+- [yamlエディター文字化け修正](../archive/legacy_docs_2026Q1/yamlエディター文字化け修正/walkthrough.md): 税制ルール設定の YAML エディターで日本語が文字化けする問題を修正する。
+- [yamlリッチエディター導入](../archive/legacy_docs_2026Q1/yamlリッチエディター導入/walkthrough.md): YAMLエディターの文字化け再発、見づらいインデント表示、ブラウザ赤波線の問題を解消する。
+- [シナリオサマリー表示_モダン再デザイン](../archive/legacy_docs_2026Q1/シナリオサマリー表示_モダン再デザイン/walkthrough.md): 初期入力条件の見せ方を強化
+- [初期入力条件拡大と案内カード削除_グラフ縦長化](../archive/legacy_docs_2026Q1/初期入力条件拡大と案内カード削除_グラフ縦長化/walkthrough.md): 初期入力条件の文字と項目表示を大きくする。
+- [年度カード_前年比増加額と増加率追加](../archive/legacy_docs_2026Q1/年度カード_前年比増加額と増加率追加/walkthrough.md): 額面の増加額と増加率
+- [年度給与詳細_カードUI_2ページ化](../archive/legacy_docs_2026Q1/年度給与詳細_カードUI_2ページ化/walkthrough.md): 年収額面
+- [年次推移ダッシュボード_縦積み大型グラフ化](../archive/legacy_docs_2026Q1/年次推移ダッシュボード_縦積み大型グラフ化/walkthrough.md): 年次推移ダッシュボードを、シナリオ縦積みでより大きく表示する。
+- [比較PDF_シナリオ中心構成再編](../archive/legacy_docs_2026Q1/比較PDF_シナリオ中心構成再編/walkthrough.md): レポート表紙
+- [比較PDF_スライド風デザイン改善](../archive/legacy_docs_2026Q1/比較PDF_スライド風デザイン改善/walkthrough.md): 比較表中心で読みにくい
+- [税制ルール_スキーマ_yaml対応](../archive/legacy_docs_2026Q1/税制ルール_スキーマ_yaml対応/walkthrough.md): 税制ルール定義ファイルを JSON ではなく YAML で管理できるようにする。
+- [税制ルール設定_yaml編集対応](../archive/legacy_docs_2026Q1/税制ルール設定_yaml編集対応/walkthrough.md): アプリ内の税制ルール設定メニューを JSON 編集から YAML 編集へ変更する。
+- [税金内訳_色棒グラフ化](../archive/legacy_docs_2026Q1/税金内訳_色棒グラフ化/walkthrough.md): 視認性を上げる

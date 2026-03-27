@@ -10,3 +10,5 @@ build
 .idea
 .yarn
 archive
+!docs/archive/
+!docs/archive/**

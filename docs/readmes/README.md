@@ -21,6 +21,17 @@
   - [取り扱い説明書 6章](./user_manual.md#6-比較レポートpdf出力)
   - [仕様書 7章](./specification.md#7-比較レポートpdf契約)
 
+## 修正履歴の参照先
+
+- 圧縮済みインデックス（全件）
+  - [history/index.md](../history/index.md)
+- 時系列ログ
+  - [history/timeline.md](../history/timeline.md)
+- 領域別サマリー
+  - [history/by_domain](../history/by_domain)
+- 旧原本（退避）
+  - [archive/legacy_docs_2026Q1](../archive/legacy_docs_2026Q1)
+
 ## このドキュメント群の設計方針
 
 - 画面名・実装ファイル名・UI配置などの可変要素ではなく、プロダクトの本質的な責務と契約を中心に記述する。
