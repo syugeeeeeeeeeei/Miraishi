@@ -4,6 +4,8 @@ import type {
   GraphViewSettings,
   PredictionResult,
   Scenario,
+  ScenarioComparisonPdfExportRequest,
+  ScenarioComparisonPdfExportResponse,
   SchemaValidationReport,
   TaxSchema,
   TaxSchemaDiffSummary,
@@ -63,7 +65,11 @@ export const api = {
     settings: GraphViewSettings
     taxSchemaOverride?: TaxSchema
   }): Promise<PredictionResult | { success: false; error?: string }> =>
-    ipcRenderer.invoke('calculate-prediction', { scenario, settings, taxSchemaOverride })
+    ipcRenderer.invoke('calculate-prediction', { scenario, settings, taxSchemaOverride }),
+  exportScenarioComparisonPdf: (
+    payload: ScenarioComparisonPdfExportRequest
+  ): Promise<ScenarioComparisonPdfExportResponse> =>
+    ipcRenderer.invoke('export-scenario-comparison-pdf', payload)
 }
 
 if (process.contextIsolated) {

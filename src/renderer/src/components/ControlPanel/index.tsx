@@ -4,10 +4,14 @@
  */
 import React, { useRef, useState } from 'react'
 import { Box, Button, Divider, Text, Tooltip, useDisclosure, useToast, VStack } from '@chakra-ui/react'
-import { FaFileInvoiceDollar, FaInfoCircle, FaPlus, FaRegCopyright } from 'react-icons/fa'
+import { FaPlus } from 'react-icons/fa'
 import { useAtom, useSetAtom } from 'jotai'
 import { motion } from 'framer-motion'
-import type { TaxSchema } from '@myTypes/miraishi'
+import type {
+  ScenarioComparisonPdfExportRequest,
+  ScenarioComparisonPdfExportResponse,
+  TaxSchema
+} from '@myTypes/miraishi'
 
 import {
   activeScenarioIdsAtom,
@@ -15,15 +19,16 @@ import {
   createScenarioAtom,
   deleteScenarioAtom,
   filteredScenariosAtom,
+  graphViewSettingsAtom,
   isControlPanelOpenAtom,
+  scenariosAtom,
   searchQueryAtom,
   taxSchemaOverrideAtom
 } from '@renderer/store/atoms'
 import { PanelHeader } from './PanelHeader'
 import { ScenarioList } from './ScenarioList'
 import { DeleteScenarioDialog } from './DeleteScenarioDialog'
-import { SystemRadialMenu } from './SystemRadialMenu'
-import { TaxRuleDialog } from './TaxRuleDialog'
+import { OptionMenu } from '../OptionMenu'
 import { defaultTaxSchema } from '@renderer/constants/defaultTaxSchema'
 
 const MotionButton = motion.create(Button)
@@ -31,12 +36,14 @@ const TAX_SCHEMA_LOCAL_STORAGE_KEY = 'miraishi.taxSchema.localFallback'
 
 export function ControlPanel(): React.JSX.Element {
   const [scenariosToDisplay] = useAtom(filteredScenariosAtom)
+  const [allScenarios] = useAtom(scenariosAtom)
   const createScenario = useSetAtom(createScenarioAtom)
   const deleteScenario = useSetAtom(deleteScenarioAtom)
   const calculatePredictions = useSetAtom(calculatePredictionsAtom)
   const setTaxSchemaOverride = useSetAtom(taxSchemaOverrideAtom)
   const [activeIds, setActiveIds] = useAtom(activeScenarioIdsAtom)
   const [isOpen, setIsOpen] = useAtom(isControlPanelOpenAtom)
+  const [graphViewSettings] = useAtom(graphViewSettingsAtom)
   const [searchQuery, setSearchQuery] = useAtom(searchQueryAtom)
   const toast = useToast()
 
@@ -46,6 +53,9 @@ export function ControlPanel(): React.JSX.Element {
   const [isTaxRuleDialogOpen, setIsTaxRuleDialogOpen] = useState<boolean>(false)
   const [isTaxSchemaLoading, setIsTaxSchemaLoading] = useState<boolean>(false)
   const [taxSchemaForDialog, setTaxSchemaForDialog] = useState<TaxSchema | null>(null)
+  const [isScenarioComparisonPdfDialogOpen, setIsScenarioComparisonPdfDialogOpen] =
+    useState<boolean>(false)
+  const [isPdfExporting, setIsPdfExporting] = useState<boolean>(false)
 
   const searchInputRef = useRef<HTMLInputElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
@@ -310,28 +320,48 @@ export function ControlPanel(): React.JSX.Element {
     })
   }
 
-  const systemMenuItems = [
-    {
-      id: 'tax-rule',
-      label: '税金ルール',
-      icon: FaFileInvoiceDollar,
-      onClick: (): void => {
-        void openTaxRuleDialog()
+  const handleExportScenarioComparisonPdf = async (
+    payload: ScenarioComparisonPdfExportRequest
+  ): Promise<void> => {
+    setIsPdfExporting(true)
+    try {
+      const apiWithOptional = window.api as typeof window.api & {
+        exportScenarioComparisonPdf?: (
+          request: ScenarioComparisonPdfExportRequest
+        ) => Promise<ScenarioComparisonPdfExportResponse>
       }
-    },
-    {
-      id: 'info',
-      label: 'インフォ',
-      icon: FaInfoCircle,
-      onClick: showInfoPlaceholder
-    },
-    {
-      id: 'credits',
-      label: 'クレジット',
-      icon: FaRegCopyright,
-      onClick: showCreditPlaceholder
+
+      if (typeof apiWithOptional.exportScenarioComparisonPdf !== 'function') {
+        throw new Error('PDFエクスポートAPIが見つかりません。アプリを更新してください。')
+      }
+
+      const result = await apiWithOptional.exportScenarioComparisonPdf(payload)
+      if (!result.success) {
+        throw new Error(result.error ?? 'PDFエクスポートに失敗しました。')
+      }
+
+      setIsScenarioComparisonPdfDialogOpen(false)
+      toast({
+        title: '比較レポートPDFを出力しました。',
+        description: result.filePath ? `保存先: ${result.filePath}` : undefined,
+        status: 'success',
+        duration: 3500,
+        isClosable: true,
+        position: 'bottom-right'
+      })
+    } catch (error) {
+      toast({
+        title: '比較レポートPDFの出力に失敗しました。',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        status: 'error',
+        duration: 3500,
+        isClosable: true,
+        position: 'bottom-right'
+      })
+    } finally {
+      setIsPdfExporting(false)
     }
-  ]
+  }
 
   return (
     <>
@@ -395,9 +425,27 @@ export function ControlPanel(): React.JSX.Element {
         </VStack>
       </Box>
 
-      <Box position="fixed" left="14px" bottom="24px" zIndex={30}>
-        <SystemRadialMenu items={systemMenuItems} />
-      </Box>
+      <OptionMenu
+        allScenarios={allScenarios}
+        activeScenarioIds={activeIds}
+        defaultUntilYear={graphViewSettings.predictionPeriod}
+        defaultAverageOvertimeHours={graphViewSettings.averageOvertimeHours}
+        isTaxRuleDialogOpen={isTaxRuleDialogOpen}
+        isTaxSchemaLoading={isTaxSchemaLoading}
+        initialTaxSchema={taxSchemaForDialog}
+        onOpenTaxRuleDialog={(): void => {
+          void openTaxRuleDialog()
+        }}
+        onCloseTaxRuleDialog={closeTaxRuleDialogWithoutChanges}
+        onTaxRuleApplied={handleTaxRuleApplied}
+        isScenarioComparisonPdfDialogOpen={isScenarioComparisonPdfDialogOpen}
+        isPdfExporting={isPdfExporting}
+        onOpenScenarioComparisonPdfDialog={(): void => setIsScenarioComparisonPdfDialogOpen(true)}
+        onCloseScenarioComparisonPdfDialog={(): void => setIsScenarioComparisonPdfDialogOpen(false)}
+        onExportScenarioComparisonPdf={handleExportScenarioComparisonPdf}
+        onShowInfo={showInfoPlaceholder}
+        onShowCredit={showCreditPlaceholder}
+      />
 
       <DeleteScenarioDialog
         isOpen={isAlertOpen}
@@ -406,13 +454,6 @@ export function ControlPanel(): React.JSX.Element {
         onConfirmDelete={confirmDelete}
       />
 
-      <TaxRuleDialog
-        isOpen={isTaxRuleDialogOpen}
-        isLoading={isTaxSchemaLoading}
-        initialTaxSchema={taxSchemaForDialog}
-        onCloseWithoutChanges={closeTaxRuleDialogWithoutChanges}
-        onApplied={handleTaxRuleApplied}
-      />
     </>
   )
 }

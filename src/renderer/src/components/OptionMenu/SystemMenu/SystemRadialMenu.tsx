@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { FaCog } from 'react-icons/fa'
 import type { IconType } from 'react-icons'
 
-interface SystemRadialMenuItem {
+export interface SystemRadialMenuItem {
   id: string
   label: string
   icon: IconType

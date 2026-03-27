@@ -2,8 +2,9 @@
  * @file src/main/index.ts
  * @description Mainプロセス (バックエンドロジック)
  */
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { join } from 'node:path'
+import { createRequire } from 'node:module'
 import { electronApp, is, optimizer } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import Store from 'electron-store'
@@ -14,6 +15,8 @@ import type {
   GraphViewSettings,
   PredictionResult,
   Scenario,
+  ScenarioComparisonPdfExportRequest,
+  ScenarioComparisonPdfExportResponse,
   SchemaValidationReport,
   TaxSchema,
   TaxSchemaDiffSummary,
@@ -32,6 +35,10 @@ import {
 import { calculatePrediction } from './lib/calculator'
 import { compileTaxSchemaV2 } from './lib/taxSchemaEngine'
 import { diffAsJsonPointers } from './lib/schemaDiff'
+import {
+  buildScenarioComparisonDefaultFileName,
+  buildScenarioComparisonReportHtml
+} from './lib/scenarioComparisonPdf'
 
 // -----------------------------------------------------------------------------
 // 初期化
@@ -51,6 +58,7 @@ const store = new Store<AppStore>({
 
 const initialCalculationCache = new Map<string, PredictionResult>()
 const HISTORY_LIMIT = 100
+const localRequire = createRequire(__filename)
 
 const taxSchemaPath = join(__dirname, '../../resources/schema/tax_schema.yaml')
 const legacyTaxSchemaPath = join(__dirname, '../../resources/schema/tax_schema.json')
@@ -323,6 +331,138 @@ const applyNormalizedSchema = (schema: TaxSchemaV2, note: string): TaxSchemaSnap
   initialCalculationCache.clear()
 
   return snapshot
+}
+
+const normalizeScenarioComparisonExportRequest = (
+  payload: ScenarioComparisonPdfExportRequest
+): ScenarioComparisonPdfExportRequest => {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('エクスポート設定が不正です。')
+  }
+
+  const scenarioIds = Array.from(
+    new Set((payload.scenarioIds ?? []).filter((id): id is string => typeof id === 'string' && id.length > 0))
+  )
+  if (scenarioIds.length < 2) {
+    throw new Error('比較対象シナリオは2件以上選択してください。')
+  }
+
+  const untilYear = Math.trunc(payload.untilYear)
+  if (!Number.isFinite(untilYear) || untilYear < 1 || untilYear > 50) {
+    throw new Error('比較対象年は1〜50の範囲で指定してください。')
+  }
+
+  const averageOvertimeHours = Number(payload.averageOvertimeHours)
+  if (!Number.isFinite(averageOvertimeHours) || averageOvertimeHours < 0 || averageOvertimeHours > 500) {
+    throw new Error('月平均残業時間の指定が不正です。')
+  }
+
+  const includeSections = payload.includeSections
+  if (!includeSections || typeof includeSections !== 'object') {
+    throw new Error('出力セクション設定が不正です。')
+  }
+
+  const normalizedSections = {
+    conditions: Boolean(includeSections.conditions),
+    yearlyComparison: Boolean(includeSections.yearlyComparison),
+    growthSummary: Boolean(includeSections.growthSummary),
+    scenarioDetails: Boolean(includeSections.scenarioDetails),
+    taxMeta: Boolean(includeSections.taxMeta)
+  }
+
+  if (!Object.values(normalizedSections).some(Boolean)) {
+    throw new Error('出力セクションを1つ以上選択してください。')
+  }
+
+  return {
+    scenarioIds,
+    untilYear,
+    averageOvertimeHours,
+    includeSections: normalizedSections
+  }
+}
+
+const createPdfBufferFromHtml = async (html: string): Promise<Buffer> => {
+  const printWindow = new BrowserWindow({
+    show: false,
+    width: 1280,
+    height: 1810,
+    webPreferences: {
+      sandbox: true,
+      contextIsolation: true
+    }
+  })
+
+  const tempHtmlPath = join(
+    app.getPath('temp'),
+    `miraishi-scenario-comparison-${Date.now()}-${crypto.randomUUID()}.html`
+  )
+
+  try {
+    await fs.promises.writeFile(tempHtmlPath, html, 'utf8')
+    await printWindow.loadFile(tempHtmlPath)
+    await printWindow.webContents.executeJavaScript(
+      "document.fonts && document.fonts.ready ? document.fonts.ready.then(() => true) : true"
+    )
+    return await printWindow.webContents.printToPDF({
+      printBackground: true,
+      preferCSSPageSize: true,
+      pageSize: 'A4'
+    })
+  } finally {
+    await fs.promises.unlink(tempHtmlPath).catch(() => undefined)
+    if (!printWindow.isDestroyed()) {
+      printWindow.destroy()
+    }
+  }
+}
+
+const buildEmbeddedFontFaceCss = (): string => {
+  const fontDefinitions: Array<{ family: string; weight: number; modulePath: string }> = [
+    {
+      family: 'Zen Maru Gothic',
+      weight: 400,
+      modulePath: '@fontsource/zen-maru-gothic/files/zen-maru-gothic-japanese-400-normal.woff2'
+    },
+    {
+      family: 'Zen Maru Gothic',
+      weight: 700,
+      modulePath: '@fontsource/zen-maru-gothic/files/zen-maru-gothic-japanese-700-normal.woff2'
+    },
+    {
+      family: 'M PLUS Rounded 1c',
+      weight: 400,
+      modulePath: '@fontsource/m-plus-rounded-1c/files/m-plus-rounded-1c-japanese-400-normal.woff2'
+    },
+    {
+      family: 'M PLUS Rounded 1c',
+      weight: 700,
+      modulePath: '@fontsource/m-plus-rounded-1c/files/m-plus-rounded-1c-japanese-700-normal.woff2'
+    }
+  ]
+
+  const chunks: string[] = []
+
+  fontDefinitions.forEach((font) => {
+    try {
+      const resolvedPath = localRequire.resolve(font.modulePath)
+      const fontBuffer = fs.readFileSync(resolvedPath)
+      const base64 = fontBuffer.toString('base64')
+      chunks.push(`
+@font-face {
+  font-family: '${font.family}';
+  font-style: normal;
+  font-weight: ${font.weight};
+  font-display: swap;
+  src: url(data:font/woff2;base64,${base64}) format('woff2');
+}
+      `)
+    } catch {
+      // フォント埋め込み失敗時はシステムフォントへフォールバック
+    }
+  })
+
+  return chunks.join('\n')
 }
 
 // -----------------------------------------------------------------------------
@@ -615,6 +755,105 @@ app.whenReady().then((): void => {
     }
   }
 
+  const handleExportScenarioComparisonPdf = async (
+    event,
+    payload: ScenarioComparisonPdfExportRequest
+  ): Promise<ScenarioComparisonPdfExportResponse> => {
+    try {
+      const normalizedPayload = normalizeScenarioComparisonExportRequest(payload)
+      const scenarios = normalizeStoredScenarios()
+      const scenarioMap = new Map(scenarios.map((scenario) => [scenario.id, scenario]))
+      const selectedScenarios: Scenario[] = []
+      const missingIds: string[] = []
+
+      normalizedPayload.scenarioIds.forEach((id) => {
+        const scenario = scenarioMap.get(id)
+        if (!scenario) {
+          missingIds.push(id)
+          return
+        }
+        selectedScenarios.push(scenario)
+      })
+
+      if (missingIds.length > 0) {
+        throw new Error(`選択されたシナリオが見つかりません: ${missingIds.join(', ')}`)
+      }
+
+      if (selectedScenarios.length < 2) {
+        throw new Error('比較対象シナリオは2件以上必要です。')
+      }
+
+      const calculationSettings: GraphViewSettings = {
+        predictionPeriod: normalizedPayload.untilYear,
+        averageOvertimeHours: normalizedPayload.averageOvertimeHours,
+        displayItem: ['netAnnual']
+      }
+
+      const entries: { scenario: Scenario; result: PredictionResult }[] = selectedScenarios.map((scenario) => {
+        try {
+          const result = calculatePrediction(
+            {
+              scenario,
+              settings: calculationSettings
+            },
+            compiledActiveTaxSchema
+          )
+          if (!result.details[normalizedPayload.untilYear - 1]) {
+            throw new Error(`${normalizedPayload.untilYear}年目までの結果を取得できませんでした。`)
+          }
+          return { scenario, result }
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : '計算に失敗しました。'
+          throw new Error(`シナリオ「${scenario.title}」の計算に失敗しました: ${reason}`)
+        }
+      })
+
+      const now = new Date()
+      const html = buildScenarioComparisonReportHtml({
+        generatedAt: now,
+        untilYear: normalizedPayload.untilYear,
+        averageOvertimeHours: normalizedPayload.averageOvertimeHours,
+        includeSections: normalizedPayload.includeSections,
+        taxSchema: activeTaxSchema,
+        entries,
+        embeddedFontFaceCss: buildEmbeddedFontFaceCss()
+      })
+
+      const defaultFileName = buildScenarioComparisonDefaultFileName(
+        now,
+        entries.length,
+        normalizedPayload.untilYear
+      )
+      const ownerWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined
+      const saveDialogOptions = {
+        title: '比較レポート(PDF)を保存',
+        defaultPath: join(app.getPath('documents'), defaultFileName),
+        buttonLabel: '保存',
+        filters: [{ name: 'PDF', extensions: ['pdf'] }]
+      }
+      const { canceled, filePath } = ownerWindow
+        ? await dialog.showSaveDialog(ownerWindow, saveDialogOptions)
+        : await dialog.showSaveDialog(saveDialogOptions)
+
+      if (canceled || !filePath) {
+        return { success: false, error: '保存がキャンセルされました。' }
+      }
+
+      const pdfBuffer = await createPdfBufferFromHtml(html)
+      await fs.promises.writeFile(filePath, pdfBuffer)
+
+      return {
+        success: true,
+        filePath
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        return { success: false, error: error.message }
+      }
+      return { success: false, error: '比較レポートの出力に失敗しました。' }
+    }
+  }
+
   ipcMain.handle('get-tax-schema', handleGetTaxSchema)
   ipcMain.handle('getTaxSchema', handleGetTaxSchema)
   ipcMain.handle('preview-tax-schema', handlePreviewTaxSchema)
@@ -624,6 +863,7 @@ app.whenReady().then((): void => {
   ipcMain.handle('list-tax-schema-history', handleListTaxSchemaHistory)
   ipcMain.handle('restore-tax-schema', handleRestoreTaxSchema)
   ipcMain.handle('diff-tax-schema', handleDiffTaxSchema)
+  ipcMain.handle('export-scenario-comparison-pdf', handleExportScenarioComparisonPdf)
 
   ipcMain.handle(
     'calculate-prediction',

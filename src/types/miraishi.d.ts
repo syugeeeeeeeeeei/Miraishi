@@ -262,6 +262,29 @@ export type GraphViewSettings = {
   displayItem: ('grossAnnual' | 'netAnnual' | 'monthlyGross' | 'monthlyNet')[]
 }
 
+export type ScenarioComparisonPdfIncludeSections = {
+  conditions: boolean
+  yearlyComparison: boolean
+  growthSummary: boolean
+  scenarioDetails: boolean
+  taxMeta: boolean
+}
+
+export type ScenarioComparisonPdfExportRequest = {
+  scenarioIds: string[]
+  untilYear: number
+  averageOvertimeHours: number
+  includeSections: ScenarioComparisonPdfIncludeSections
+}
+
+export type ScenarioComparisonPdfExportResponse = {
+  success: boolean
+  filePath?: string
+  pageCount?: number
+  warnings?: string[]
+  error?: string
+}
+
 export type ViewState = {
   activeScenarioIds: string[]
   graphViewSettings: GraphViewSettings
