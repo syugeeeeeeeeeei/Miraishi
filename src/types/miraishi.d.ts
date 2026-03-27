@@ -143,6 +143,7 @@ export type TaxSchemaV2 = {
   uiMeta: {
     labels: Record<string, string>
     descriptions: Record<string, string>
+    items: Record<string, TaxSchemaUiMetaItem>
   }
 }
 
@@ -169,6 +170,12 @@ export type FormulaStepId =
   | 'totals.totalDeductions'
   | 'totals.netAnnualIncome'
   | 'projection.nextYearMonthlyBasicSalary'
+
+export type TaxSchemaUiMetaItem = {
+  name: string
+  description: string
+  formulaStepIds?: FormulaStepId[]
+}
 
 export type FormulaExpression =
   | { op: 'const'; value: number }
@@ -197,9 +204,11 @@ export type FormulaExpression =
       defaultValue?: FormulaExpression
     }
 
+export type FormulaStepExpression = string | FormulaExpression
+
 export type FormulaStep = {
   id: FormulaStepId
-  expr: FormulaExpression
+  expr: FormulaStepExpression
 }
 
 export type CompiledFormulaStep = {

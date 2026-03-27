@@ -10,7 +10,7 @@ import {
   FORMULA_STEP_IDS,
   migrateTaxSchemaV1ToV2
 } from '../../shared/taxSchemaDefaults'
-import { compileTaxSchemaV2 } from './taxSchemaEngine'
+import { compileTaxSchemaV2, formulaExpressionToString } from './taxSchemaEngine'
 
 const durationSchema = z.union([
   z.object({ type: z.literal('unlimited') }).strict(),
@@ -233,7 +233,15 @@ const formulaExpressionSchema: z.ZodTypeAny = z.lazy(() =>
 const formulaStepSchema = z
   .object({
     id: formulaStepIdSchema,
-    expr: formulaExpressionSchema
+    expr: z.union([z.string().min(1), formulaExpressionSchema])
+  })
+  .strict()
+
+const uiMetaItemSchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().min(1),
+    formulaStepIds: z.array(formulaStepIdSchema).optional().default([])
   })
   .strict()
 
@@ -295,7 +303,8 @@ const taxSchemaV2SchemaInternal = z
     uiMeta: z
       .object({
         labels: z.record(z.string(), z.string()),
-        descriptions: z.record(z.string(), z.string())
+        descriptions: z.record(z.string(), z.string()),
+        items: z.record(z.string(), uiMetaItemSchema).optional().default({})
       })
       .strict()
   })
@@ -375,10 +384,17 @@ export const validateTaxSchemaV2Semantics = (
 }
 
 export const normalizeTaxSchema = (schema: TaxSchema): TaxSchemaV2 => {
-  if (isTaxSchemaV2(schema)) {
-    return schema
+  const v2 = isTaxSchemaV2(schema) ? schema : migrateTaxSchemaV1ToV2(schema)
+  return {
+    ...v2,
+    formula: {
+      ...v2.formula,
+      steps: v2.formula.steps.map((step) => ({
+        ...step,
+        expr: typeof step.expr === 'string' ? step.expr : formulaExpressionToString(step.expr)
+      }))
+    }
   }
-  return migrateTaxSchemaV1ToV2(schema)
 }
 
 export const parseTaxSchemaUnknown = (value: unknown): TaxSchema => {

@@ -69,4 +69,19 @@ describe('validators', () => {
       )
     ).toBe(true)
   })
+
+  it('V2でAST形式の式が混在していても文字式へ正規化されること', () => {
+    const schema = defaultTaxSchemaV2()
+    const step = schema.formula.steps.find((item) => item.id === 'income.annualBonus')
+    if (!step) {
+      throw new Error('income.annualBonus step was not found')
+    }
+    step.expr = { op: 'var', name: 'rawAnnualBonus' }
+
+    const normalized = normalizeTaxSchema(schema)
+    const normalizedStep = normalized.formula.steps.find((item) => item.id === 'income.annualBonus')
+
+    expect(typeof normalizedStep?.expr).toBe('string')
+    expect(normalizedStep?.expr).toBe('rawAnnualBonus')
+  })
 })

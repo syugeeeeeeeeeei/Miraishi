@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { defaultTaxSchemaV2 } from '../../shared/taxSchemaDefaults'
-import { compileTaxSchemaV2, evaluateCompiledFormula } from './taxSchemaEngine'
+import { compileTaxSchemaV2, evaluateCompiledFormula, parseFormulaExpression } from './taxSchemaEngine'
 
 const buildRuntimeVars = (): Record<string, unknown> => ({
   rawAnnualBasicSalary: 3600000,
@@ -52,7 +52,7 @@ describe('taxSchemaEngine', () => {
     if (!target) {
       throw new Error('income.annualBonus step was not found')
     }
-    target.expr = { op: 'var', name: 'unknownVariable' }
+    target.expr = 'unknownVariable'
 
     expect(() => compileTaxSchemaV2(schema)).toThrow(/未定義変数 unknownVariable/)
   })
@@ -63,9 +63,36 @@ describe('taxSchemaEngine', () => {
     if (!target) {
       throw new Error('income.annualBasicSalary step was not found')
     }
-    target.expr = { op: 'var', name: 'totals.netAnnualIncome' }
+    target.expr = 'totals.netAnnualIncome'
 
     expect(() => compileTaxSchemaV2(schema)).toThrow(/循環依存/)
+  })
+
+  it('危険な関数呼び出しを拒否すること', () => {
+    const schema = defaultTaxSchemaV2()
+    const target = schema.formula.steps.find((step) => step.id === 'income.annualBonus')
+    if (!target) {
+      throw new Error('income.annualBonus step was not found')
+    }
+    target.expr = 'process.exit(1)'
+
+    expect(() => compileTaxSchemaV2(schema)).toThrow(/未許可関数/)
+  })
+
+  it('危険なキー参照を拒否すること', () => {
+    const schema = defaultTaxSchemaV2()
+    const target = schema.formula.steps.find((step) => step.id === 'deductions.basic')
+    if (!target) {
+      throw new Error('deductions.basic step was not found')
+    }
+    target.expr = "bracketLookup(income.grossAnnualIncome, '__proto__', 'maxTotalIncome', 'amount', 0)"
+
+    expect(() => compileTaxSchemaV2(schema)).toThrow(/不正/)
+  })
+
+  it('式長の上限を超える場合に拒否すること', () => {
+    const longExpression = `x${'+x'.repeat(5000)}`
+    expect(() => parseFormulaExpression(longExpression, 'income.annualBonus')).toThrow(/長すぎます/)
   })
 
   it('同一入力で決定的に評価されること', () => {

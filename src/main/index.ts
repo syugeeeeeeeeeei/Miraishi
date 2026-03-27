@@ -88,7 +88,7 @@ const parseStoredTaxSchemaState = (raw: unknown): TaxSchemaState | null => {
     if (!parsedSchema.success) {
       continue
     }
-    const validatedSchema = parsedSchema.data as TaxSchemaV2
+    const validatedSchema = normalizeTaxSchema(parsedSchema.data as TaxSchemaV2)
     snapshots.push({
       id: String((snapshot as TaxSchemaSnapshot).id ?? crypto.randomUUID()),
       hash: String((snapshot as TaxSchemaSnapshot).hash ?? createSchemaHash(validatedSchema)),

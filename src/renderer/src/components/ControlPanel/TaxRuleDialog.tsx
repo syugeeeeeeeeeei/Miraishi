@@ -1,4 +1,9 @@
 import {
+  Accordion,
+  AccordionButton,
+  AccordionIcon,
+  AccordionItem,
+  AccordionPanel,
   Badge,
   Box,
   Button,
@@ -25,7 +30,7 @@ import {
 } from '@chakra-ui/react'
 import { yaml as yamlLanguage } from '@codemirror/lang-yaml'
 import { EditorView } from '@codemirror/view'
-import type { SchemaValidationReport, TaxSchema } from '@myTypes/miraishi'
+import type { SchemaValidationReport, TaxSchema, TaxSchemaV2 } from '@myTypes/miraishi'
 import CodeMirror from '@uiw/react-codemirror'
 import React, { useEffect, useMemo, useState } from 'react'
 import { stringify } from 'yaml'
@@ -124,6 +129,78 @@ const classifyErrors = (errors: string[]): {
   return { syntax, structure, semantic }
 }
 
+const resolveByDotPath = (source: unknown, path: string): unknown => {
+  return path.split('.').reduce<unknown>((current, key) => {
+    if (!current || typeof current !== 'object') {
+      return undefined
+    }
+    return (current as Record<string, unknown>)[key]
+  }, source)
+}
+
+const truncateText = (value: string, maxLength: number): string => {
+  if (value.length <= maxLength) {
+    return value
+  }
+  return `${value.slice(0, maxLength)}...`
+}
+
+const formatSchemaValuePreview = (value: unknown): string => {
+  if (value === undefined) {
+    return '該当データなし'
+  }
+  if (value === null) {
+    return 'null'
+  }
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value)
+  }
+  if (Array.isArray(value)) {
+    return `${value.length} 件の配列`
+  }
+  if (typeof value === 'object') {
+    try {
+      return truncateText(
+        stringify(value as Record<string, unknown>, {
+          indent: 2,
+          lineWidth: 0
+        }).trim(),
+        500
+      )
+    } catch {
+      return 'オブジェクト'
+    }
+  }
+  return String(value)
+}
+
+const formatFormulaExpressionPreview = (expression: unknown): string => {
+  if (typeof expression === 'string') {
+    return expression
+  }
+  try {
+    return stringify(expression as Record<string, unknown>, {
+      indent: 2,
+      lineWidth: 0
+    }).trim()
+  } catch {
+    return JSON.stringify(expression)
+  }
+}
+
+type FormulaPreviewRow = {
+  stepId: string
+  expression: string
+}
+
+type SchemaItemPreviewRow = {
+  itemKey: string
+  name: string
+  description: string
+  valuePreview: string
+  relatedFormulas: FormulaPreviewRow[]
+}
+
 export function TaxRuleDialog({
   isOpen,
   isLoading,
@@ -142,6 +219,39 @@ export function TaxRuleDialog({
   const [activeSnapshotId, setActiveSnapshotId] = useState<string | null>(null)
 
   const parsedErrors = useMemo(() => classifyErrors(report?.errors ?? []), [report])
+  const normalizedSchema = report?.normalizedSchema as TaxSchemaV2 | undefined
+
+  const formulaPreviewRows = useMemo<FormulaPreviewRow[]>(() => {
+    if (!normalizedSchema) {
+      return []
+    }
+    return normalizedSchema.formula.steps.map((step) => ({
+      stepId: step.id,
+      expression: formatFormulaExpressionPreview(step.expr)
+    }))
+  }, [normalizedSchema])
+
+  const schemaItemPreviewRows = useMemo<SchemaItemPreviewRow[]>(() => {
+    if (!normalizedSchema) {
+      return []
+    }
+
+    const formulaMap = new Map<string, FormulaPreviewRow>(
+      formulaPreviewRows.map((row) => [row.stepId, row] as const)
+    )
+
+    return Object.entries(normalizedSchema.uiMeta.items ?? {})
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([itemKey, itemMeta]) => ({
+        itemKey,
+        name: itemMeta.name,
+        description: itemMeta.description,
+        valuePreview: formatSchemaValuePreview(resolveByDotPath(normalizedSchema, itemKey)),
+        relatedFormulas: (itemMeta.formulaStepIds ?? [])
+          .map((stepId) => formulaMap.get(stepId))
+          .filter((row): row is FormulaPreviewRow => Boolean(row))
+      }))
+  }, [formulaPreviewRows, normalizedSchema])
 
   const loadHistory = async (): Promise<void> => {
     const result = await window.api.listTaxSchemaHistory()
@@ -452,6 +562,120 @@ export function TaxRuleDialog({
                             {report.normalizedSchema.effectiveTo ? report.normalizedSchema.effectiveTo : 'null'}
                           </Text>
                         </VStack>
+                      ) : (
+                        <Text fontSize="sm" color="gray.600">
+                          まだ検証していません。
+                        </Text>
+                      )}
+                    </Box>
+
+                    <Box bg="white" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={4}>
+                      <Text fontWeight="bold" mb={3}>
+                        項目定義・計算式（アコーディオン）
+                      </Text>
+                      {normalizedSchema ? (
+                        <Accordion allowMultiple defaultIndex={[0]}>
+                          {schemaItemPreviewRows.length > 0 ? (
+                            schemaItemPreviewRows.map((row) => (
+                              <AccordionItem key={row.itemKey}>
+                                <h2>
+                                  <AccordionButton>
+                                    <Box flex="1" textAlign="left">
+                                      <Text fontWeight="semibold">{row.name}</Text>
+                                      <Text fontSize="xs" color="gray.600">
+                                        {row.itemKey}
+                                      </Text>
+                                    </Box>
+                                    <AccordionIcon />
+                                  </AccordionButton>
+                                </h2>
+                                <AccordionPanel pb={4}>
+                                  <VStack align="stretch" spacing={3}>
+                                    <Text fontSize="sm" color="gray.700">
+                                      {row.description}
+                                    </Text>
+                                    <Box bg="gray.50" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
+                                      <Text fontSize="xs" color="gray.600" mb={1}>
+                                        現在値
+                                      </Text>
+                                      <Text fontSize="sm" whiteSpace="pre-wrap" fontFamily="mono">
+                                        {row.valuePreview}
+                                      </Text>
+                                    </Box>
+                                    <Box bg="gray.50" borderWidth="1px" borderColor="gray.200" borderRadius="md" p={3}>
+                                      <Text fontSize="xs" color="gray.600" mb={1}>
+                                        関連計算式
+                                      </Text>
+                                      {row.relatedFormulas.length > 0 ? (
+                                        <VStack align="stretch" spacing={2}>
+                                          {row.relatedFormulas.map((formula) => (
+                                            <Box key={`${row.itemKey}-${formula.stepId}`}>
+                                              <Text fontSize="xs" color="gray.600">
+                                                {formula.stepId}
+                                              </Text>
+                                              <Text fontSize="sm" whiteSpace="pre-wrap" fontFamily="mono">
+                                                {formula.expression}
+                                              </Text>
+                                            </Box>
+                                          ))}
+                                        </VStack>
+                                      ) : (
+                                        <Text fontSize="sm" color="gray.600">
+                                          関連づく計算式は未設定です。
+                                        </Text>
+                                      )}
+                                    </Box>
+                                  </VStack>
+                                </AccordionPanel>
+                              </AccordionItem>
+                            ))
+                          ) : (
+                            <Text fontSize="sm" color="gray.600" px={2} py={2}>
+                              `uiMeta.items` に項目定義がありません。
+                            </Text>
+                          )}
+
+                          <AccordionItem>
+                            <h2>
+                              <AccordionButton>
+                                <Box flex="1" textAlign="left">
+                                  <Text fontWeight="semibold">全計算式一覧</Text>
+                                  <Text fontSize="xs" color="gray.600">
+                                    formula.steps
+                                  </Text>
+                                </Box>
+                                <AccordionIcon />
+                              </AccordionButton>
+                            </h2>
+                            <AccordionPanel pb={4}>
+                              {formulaPreviewRows.length > 0 ? (
+                                <VStack align="stretch" spacing={3}>
+                                  {formulaPreviewRows.map((formula) => (
+                                    <Box
+                                      key={`formula-${formula.stepId}`}
+                                      bg="gray.50"
+                                      borderWidth="1px"
+                                      borderColor="gray.200"
+                                      borderRadius="md"
+                                      p={3}
+                                    >
+                                      <Text fontSize="xs" color="gray.600" mb={1}>
+                                        {formula.stepId}
+                                      </Text>
+                                      <Text fontSize="sm" whiteSpace="pre-wrap" fontFamily="mono">
+                                        {formula.expression}
+                                      </Text>
+                                    </Box>
+                                  ))}
+                                </VStack>
+                              ) : (
+                                <Text fontSize="sm" color="gray.600">
+                                  計算式がありません。
+                                </Text>
+                              )}
+                            </AccordionPanel>
+                          </AccordionItem>
+                        </Accordion>
                       ) : (
                         <Text fontSize="sm" color="gray.600">
                           まだ検証していません。

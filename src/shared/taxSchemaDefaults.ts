@@ -1,5 +1,4 @@
 import type {
-  FormulaExpression,
   FormulaStep,
   FormulaStepId,
   TaxSchemaV1,
@@ -70,20 +69,6 @@ const oneDecimalRateByPrefecture = PREFECTURE_OPTIONS.reduce<Record<string, numb
   return acc
 }, {})
 
-const v = (name: string): FormulaExpression => ({ op: 'var', name })
-const c = (value: number): FormulaExpression => ({ op: 'const', value })
-const add = (...args: FormulaExpression[]): FormulaExpression => ({ op: 'add', args })
-const sub = (...args: FormulaExpression[]): FormulaExpression => ({ op: 'sub', args })
-const mul = (...args: FormulaExpression[]): FormulaExpression => ({ op: 'mul', args })
-const div = (...args: FormulaExpression[]): FormulaExpression => ({ op: 'div', args })
-const min = (...args: FormulaExpression[]): FormulaExpression => ({ op: 'min', args })
-const max = (...args: FormulaExpression[]): FormulaExpression => ({ op: 'max', args })
-const round = (value: FormulaExpression, digits: number): FormulaExpression => ({
-  op: 'round',
-  value,
-  digits
-})
-
 export const FORMULA_STEP_IDS: FormulaStepId[] = [
   'income.annualBasicSalary',
   'income.annualFixedOvertime',
@@ -108,149 +93,67 @@ export const FORMULA_STEP_IDS: FormulaStepId[] = [
 ]
 
 export const defaultFormulaSteps = (): FormulaStep[] => [
-  { id: 'income.annualBasicSalary', expr: v('rawAnnualBasicSalary') },
-  { id: 'income.annualFixedOvertime', expr: v('rawAnnualFixedOvertime') },
-  { id: 'income.annualVariableOvertime', expr: v('rawAnnualVariableOvertime') },
-  { id: 'income.annualAllowances', expr: v('rawAnnualAllowances') },
-  { id: 'income.annualBonus', expr: v('rawAnnualBonus') },
+  { id: 'income.annualBasicSalary', expr: 'rawAnnualBasicSalary' },
+  { id: 'income.annualFixedOvertime', expr: 'rawAnnualFixedOvertime' },
+  { id: 'income.annualVariableOvertime', expr: 'rawAnnualVariableOvertime' },
+  { id: 'income.annualAllowances', expr: 'rawAnnualAllowances' },
+  { id: 'income.annualBonus', expr: 'rawAnnualBonus' },
   {
     id: 'income.grossAnnualIncome',
-    expr: add(
-      v('income.annualBasicSalary'),
-      v('income.annualFixedOvertime'),
-      v('income.annualVariableOvertime'),
-      v('income.annualAllowances'),
-      v('income.annualBonus')
-    )
+    expr: 'income.annualBasicSalary + income.annualFixedOvertime + income.annualVariableOvertime + income.annualAllowances + income.annualBonus'
   },
   {
     id: 'insurance.health',
-    expr: mul(
-      min(
-        mul(round(div(div(v('income.grossAnnualIncome'), c(12)), c(1000)), 0), c(1000)),
-        v('healthInsuranceMaxStandardRemuneration')
-      ),
-      v('healthInsuranceRateEmployee'),
-      c(12)
-    )
+    expr: 'min(round(income.grossAnnualIncome / 12 / 1000, 0) * 1000, healthInsuranceMaxStandardRemuneration) * healthInsuranceRateEmployee * 12'
   },
   {
     id: 'insurance.pension',
-    expr: mul(
-      min(
-        min(
-          mul(round(div(div(v('income.grossAnnualIncome'), c(12)), c(1000)), 0), c(1000)),
-          v('healthInsuranceMaxStandardRemuneration')
-        ),
-        v('pensionMaxStandardRemuneration')
-      ),
-      v('pensionRateEmployee'),
-      c(12)
-    )
+    expr: 'min(min(round(income.grossAnnualIncome / 12 / 1000, 0) * 1000, healthInsuranceMaxStandardRemuneration), pensionMaxStandardRemuneration) * pensionRateEmployee * 12'
   },
   {
     id: 'insurance.employment',
-    expr: mul(v('income.grossAnnualIncome'), v('employmentInsuranceRateEmployee'))
+    expr: 'income.grossAnnualIncome * employmentInsuranceRateEmployee'
   },
   {
     id: 'deductions.basic',
-    expr: {
-      op: 'bracketLookup',
-      value: v('income.grossAnnualIncome'),
-      tableVar: 'basicByTotalIncome',
-      thresholdKey: 'maxTotalIncome',
-      targetKey: 'amount',
-      defaultValue: c(0)
-    }
+    expr: "bracketLookup(income.grossAnnualIncome, 'basicByTotalIncome', 'maxTotalIncome', 'amount', 0)"
   },
   {
     id: 'deductions.spouse',
-    expr: {
-      op: 'if',
-      condition: v('spouseDeductionAppliedFlag'),
-      then: v('spouseDeductionAmount'),
-      else: c(0)
-    }
+    expr: 'if(spouseDeductionAppliedFlag, spouseDeductionAmount, 0)'
   },
   {
     id: 'deductions.dependent',
-    expr: mul(v('numberOfDependents'), v('dependentDeductionPerPerson'))
+    expr: 'numberOfDependents * dependentDeductionPerPerson'
   },
-  { id: 'deductions.otherTotal', expr: v('otherDeductionsTotal') },
+  { id: 'deductions.otherTotal', expr: 'otherDeductionsTotal' },
   {
     id: 'taxableIncome',
-    expr: max(
-      c(0),
-      sub(
-        v('income.grossAnnualIncome'),
-        add(
-          v('insurance.health'),
-          v('insurance.pension'),
-          v('insurance.employment'),
-          v('deductions.basic'),
-          v('deductions.spouse'),
-          v('deductions.dependent'),
-          v('deductions.otherTotal')
-        )
-      )
-    )
+    expr: 'max(0, income.grossAnnualIncome - (insurance.health + insurance.pension + insurance.employment + deductions.basic + deductions.spouse + deductions.dependent + deductions.otherTotal))'
   },
   {
     id: 'taxes.income',
-    expr: max(
-      c(0),
-      sub(
-        mul(
-          v('taxableIncome'),
-          {
-            op: 'bracketLookup',
-            value: v('taxableIncome'),
-            tableVar: 'incomeTaxRates',
-            thresholdKey: 'threshold',
-            targetKey: 'rate',
-            defaultValue: c(0)
-          }
-        ),
-        {
-          op: 'bracketLookup',
-          value: v('taxableIncome'),
-          tableVar: 'incomeTaxRates',
-          thresholdKey: 'threshold',
-          targetKey: 'deduction',
-          defaultValue: c(0)
-        }
-      )
-    )
+    expr: "max(0, taxableIncome * bracketLookup(taxableIncome, 'incomeTaxRates', 'threshold', 'rate', 0) - bracketLookup(taxableIncome, 'incomeTaxRates', 'threshold', 'deduction', 0))"
   },
   {
     id: 'taxes.reconstruction',
-    expr: mul(v('taxes.income'), v('reconstructionSpecialIncomeTaxRate'))
+    expr: 'taxes.income * reconstructionSpecialIncomeTaxRate'
   },
   {
     id: 'taxes.resident',
-    expr: mul(v('residentTaxBaseIncome'), v('residentTaxRate'))
+    expr: 'residentTaxBaseIncome * residentTaxRate'
   },
   {
     id: 'totals.totalDeductions',
-    expr: add(
-      v('insurance.health'),
-      v('insurance.pension'),
-      v('insurance.employment'),
-      v('taxes.income'),
-      v('taxes.reconstruction'),
-      v('taxes.resident')
-    )
+    expr: 'insurance.health + insurance.pension + insurance.employment + taxes.income + taxes.reconstruction + taxes.resident'
   },
   {
     id: 'totals.netAnnualIncome',
-    expr: sub(v('income.grossAnnualIncome'), v('totals.totalDeductions'))
+    expr: 'income.grossAnnualIncome - totals.totalDeductions'
   },
   {
     id: 'projection.nextYearMonthlyBasicSalary',
-    expr: mul(
-      v('baseSalaryForGrowth'),
-      add(c(1), div(v('salaryGrowthRatePercent'), c(100)))
-    )
+    expr: 'baseSalaryForGrowth * (1 + salaryGrowthRatePercent / 100)'
   }
 ]
 
@@ -319,6 +222,57 @@ export const defaultTaxSchemaV2 = (): TaxSchemaV2 => ({
       version: '税制バージョン。履歴比較時の識別に利用します。',
       effectiveFrom: '税制の適用開始日。YYYY-MM-DD形式。',
       effectiveTo: '税制の適用終了日。無期限の場合は null。'
+    },
+    items: {
+      'rules.incomeTaxRates': {
+        name: '所得税率テーブル',
+        description: '課税所得の税率帯と控除額を定義します。',
+        formulaStepIds: ['taxes.income']
+      },
+      'rules.reconstructionSpecialIncomeTaxRate': {
+        name: '復興特別所得税率',
+        description: '所得税額に対して乗算する追加税率です。',
+        formulaStepIds: ['taxes.reconstruction']
+      },
+      'rules.residentTaxRate': {
+        name: '住民税率',
+        description: '住民税計算ベースに乗算する税率です。',
+        formulaStepIds: ['taxes.resident']
+      },
+      'rules.socialInsurance.healthInsurance': {
+        name: '健康保険',
+        description: '健康保険料率・都道府県別料率・標準報酬上限を定義します。',
+        formulaStepIds: ['insurance.health']
+      },
+      'rules.socialInsurance.pension': {
+        name: '厚生年金',
+        description: '厚生年金保険料率と標準報酬上限を定義します。',
+        formulaStepIds: ['insurance.pension']
+      },
+      'rules.socialInsurance.employmentInsurance.employeeRateByIndustry': {
+        name: '雇用保険率（業種別）',
+        description: '業種コードごとの労働者負担率を定義します。',
+        formulaStepIds: ['insurance.employment']
+      },
+      'rules.deductions.basicByTotalIncome': {
+        name: '基礎控除テーブル',
+        description: '合計所得金額帯ごとの基礎控除額を定義します。',
+        formulaStepIds: ['deductions.basic']
+      },
+      'rules.deductions.spouse': {
+        name: '配偶者控除額',
+        description: '配偶者ありの場合に適用する控除額です。',
+        formulaStepIds: ['deductions.spouse']
+      },
+      'rules.deductions.dependent': {
+        name: '扶養控除額',
+        description: '扶養人数1人あたりの控除額です。',
+        formulaStepIds: ['deductions.dependent']
+      },
+      'formula.steps': {
+        name: '計算式ステップ',
+        description: '給与計算工程を式として定義した一覧です。'
+      }
     }
   }
 })
