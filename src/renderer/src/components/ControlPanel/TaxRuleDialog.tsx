@@ -1,4 +1,3 @@
-import React, { useEffect, useState } from 'react'
 import {
   Box,
   Button,
@@ -27,12 +26,13 @@ import {
   Text,
   VStack
 } from '@chakra-ui/react'
-import CodeMirror from '@uiw/react-codemirror'
 import { yaml as yamlLanguage } from '@codemirror/lang-yaml'
-import { EditorView, highlightTrailingWhitespace, highlightWhitespace } from '@codemirror/view'
+import { EditorView } from '@codemirror/view'
+import type { TaxSchema } from '@myTypes/miraishi'
+import CodeMirror from '@uiw/react-codemirror'
+import React, { useEffect, useState } from 'react'
 import { FaPlus, FaTrash } from 'react-icons/fa'
 import { parseDocument } from 'yaml'
-import type { TaxSchema } from '@myTypes/miraishi'
 
 interface TaxRuleDialogProps {
   isOpen: boolean
@@ -102,8 +102,7 @@ const YAML_EDITOR_FONT_FAMILY =
 
 const yamlEditorExtensions = [
   yamlLanguage(),
-  highlightWhitespace(),
-  highlightTrailingWhitespace(),
+  // highlightWhitespace(),
   EditorView.lineWrapping,
   EditorView.contentAttributes.of({
     spellcheck: 'false',
@@ -121,7 +120,7 @@ const yamlEditorTheme = EditorView.theme({
   },
   '.cm-scroller': {
     fontFamily: YAML_EDITOR_FONT_FAMILY,
-    lineHeight: '1.85'
+    lineHeight: '1.5'
   },
   '.cm-content': {
     letterSpacing: '0.012em',
@@ -129,14 +128,14 @@ const yamlEditorTheme = EditorView.theme({
     paddingBottom: '10px'
   },
   '.cm-line': {
-    paddingLeft: '10px',
-    paddingRight: '12px'
+    paddingLeft: '6px',
+    paddingRight: '12px',
   },
   '.cm-gutters': {
     backgroundColor: '#f4f7fb',
     color: '#64748b',
     borderRight: '1px solid #d9e2ec',
-    fontSize: '14px'
+    fontSize: '14px',
   },
   '.cm-activeLineGutter': {
     backgroundColor: '#eaf2ff',
@@ -171,23 +170,6 @@ const yamlEditorTheme = EditorView.theme({
   '.cm-propertyName': {
     color: '#0b4f92',
     fontWeight: '600'
-  },
-  '.cm-highlightSpace': {
-    backgroundImage:
-      'radial-gradient(circle at 50% 55%, rgba(148, 163, 184, 0.34) 14%, transparent 15%)',
-    backgroundPosition: 'center',
-    backgroundSize: '1.45ch 100%',
-    backgroundRepeat: 'repeat-x'
-  },
-  '.cm-highlightTab': {
-    backgroundImage:
-      "url('data:image/svg+xml,%3Csvg xmlns=\"http://www.w3.org/2000/svg\" width=\"200\" height=\"20\"%3E%3Cpath stroke=\"%2394A3B8\" stroke-width=\"1.2\" fill=\"none\" d=\"M1 10H196L190 5M190 15L196 10M197 3L197 17\"/%3E%3C/svg%3E')",
-    backgroundSize: 'auto 100%',
-    backgroundPosition: 'right 86%',
-    backgroundRepeat: 'no-repeat'
-  },
-  '.cm-trailingSpace': {
-    backgroundColor: 'rgba(229, 62, 62, 0.28)'
   }
 })
 
@@ -805,7 +787,7 @@ export function TaxRuleDialog({
                         <CodeMirror
                           value={editorText}
                           onChange={(value): void => handleEditorChange(value)}
-                          height="520px"
+                          height="550px"
                           basicSetup={{
                             lineNumbers: true,
                             foldGutter: true,
@@ -826,10 +808,7 @@ export function TaxRuleDialog({
                       {editorError}
                     </Text>
                   )}
-                  <Text mt={2} color="gray.600" fontSize="xs">
-                    YAMLが有効である間は、編集内容が即時にダイアログ内へ反映されます。スペースは青点、タブは青矢印、行末空白は赤帯で可視化します。
-                  </Text>
-                </TabPanel>
+               </TabPanel>
               </TabPanels>
             </Tabs>
           )}
