@@ -159,7 +159,7 @@ export const defaultFormulaSteps = (): FormulaStep[] => [
 
 export const defaultTaxSchemaV2 = (): TaxSchemaV2 => ({
   schemaVersion: '2.0',
-  version: '2026.1.0',
+  version: '2026.2.0',
   effectiveFrom: '2026-04-01',
   effectiveTo: null,
   rules: {
@@ -239,25 +239,85 @@ export const defaultTaxSchemaV2 = (): TaxSchemaV2 => ({
         description: '住民税計算ベースに乗算する税率です。',
         formulaStepIds: ['taxes.resident']
       },
+      'rules.socialInsurance': {
+        name: '社会保険ルール',
+        description: '健康保険・厚生年金・雇用保険に関する全体設定です。',
+        formulaStepIds: ['insurance.health', 'insurance.pension', 'insurance.employment']
+      },
       'rules.socialInsurance.healthInsurance': {
-        name: '健康保険',
-        description: '健康保険料率・都道府県別料率・標準報酬上限を定義します。',
+        name: '健康保険ルール',
+        description: '健康保険の料率設定と標準報酬上限に関する定義です。',
+        formulaStepIds: ['insurance.health', 'insurance.pension']
+      },
+      'rules.socialInsurance.healthInsurance.rateMode': {
+        name: '健康保険料率モード',
+        description: '健康保険料率の解決方法（flat / prefecture）を指定します。',
         formulaStepIds: ['insurance.health']
       },
-      'rules.socialInsurance.pension': {
-        name: '厚生年金',
-        description: '厚生年金保険料率と標準報酬上限を定義します。',
+      'rules.socialInsurance.healthInsurance.rate': {
+        name: '健康保険料率（flat）',
+        description: 'flatモード時に使う健康保険料率（全額）です。',
+        formulaStepIds: ['insurance.health']
+      },
+      'rules.socialInsurance.healthInsurance.rateByPrefecture': {
+        name: '健康保険料率（都道府県別）',
+        description: 'prefectureモード時に使う都道府県コード別の健康保険料率（全額）です。',
+        formulaStepIds: ['insurance.health']
+      },
+      'rules.socialInsurance.healthInsurance.maxStandardRemuneration': {
+        name: '健康保険 標準報酬上限',
+        description: '健康保険の標準報酬月額の上限です。',
+        formulaStepIds: ['insurance.health', 'insurance.pension']
+      },
+      'rules.socialInsurance.pension.rate': {
+        name: '厚生年金保険料率',
+        description: '厚生年金保険料率（全額）です。',
         formulaStepIds: ['insurance.pension']
+      },
+      'rules.socialInsurance.pension': {
+        name: '厚生年金ルール',
+        description: '厚生年金保険料率と標準報酬上限の定義です。',
+        formulaStepIds: ['insurance.pension']
+      },
+      'rules.socialInsurance.pension.maxStandardRemuneration': {
+        name: '厚生年金 標準報酬上限',
+        description: '厚生年金の標準報酬月額の上限です。',
+        formulaStepIds: ['insurance.pension']
+      },
+      'rules.socialInsurance.employmentInsurance': {
+        name: '雇用保険ルール',
+        description: '雇用保険の業種別料率設定です。',
+        formulaStepIds: ['insurance.employment']
       },
       'rules.socialInsurance.employmentInsurance.employeeRateByIndustry': {
         name: '雇用保険率（業種別）',
         description: '業種コードごとの労働者負担率を定義します。',
         formulaStepIds: ['insurance.employment']
       },
+      'rules.socialInsurance.employmentInsurance.employeeRateByIndustry.general': {
+        name: '雇用保険率（一般）',
+        description: '業種コード general に対応する労働者負担率です。',
+        formulaStepIds: ['insurance.employment']
+      },
+      'rules.socialInsurance.employmentInsurance.employeeRateByIndustry.agricultureForestrySakeManufacturing': {
+        name: '雇用保険率（農林水産・清酒製造）',
+        description: '業種コード agricultureForestrySakeManufacturing に対応する労働者負担率です。',
+        formulaStepIds: ['insurance.employment']
+      },
+      'rules.socialInsurance.employmentInsurance.employeeRateByIndustry.construction': {
+        name: '雇用保険率（建設）',
+        description: '業種コード construction に対応する労働者負担率です。',
+        formulaStepIds: ['insurance.employment']
+      },
       'rules.deductions.basicByTotalIncome': {
         name: '基礎控除テーブル',
         description: '合計所得金額帯ごとの基礎控除額を定義します。',
         formulaStepIds: ['deductions.basic']
+      },
+      'rules.deductions': {
+        name: '所得控除ルール',
+        description: '基礎控除・配偶者控除・扶養控除の定義です。',
+        formulaStepIds: ['deductions.basic', 'deductions.spouse', 'deductions.dependent']
       },
       'rules.deductions.spouse': {
         name: '配偶者控除額',

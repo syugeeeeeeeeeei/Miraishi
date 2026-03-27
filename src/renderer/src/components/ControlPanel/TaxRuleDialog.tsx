@@ -220,6 +220,7 @@ export function TaxRuleDialog({
 
   const parsedErrors = useMemo(() => classifyErrors(report?.errors ?? []), [report])
   const normalizedSchema = report?.normalizedSchema as TaxSchemaV2 | undefined
+  const canApplySchema = Boolean(report?.isValid && report?.normalizedSchema)
 
   const formulaPreviewRows = useMemo<FormulaPreviewRow[]>(() => {
     if (!normalizedSchema) {
@@ -442,7 +443,10 @@ export function TaxRuleDialog({
                     <Box borderRadius="calc(var(--chakra-radii-2xl) - 1px)" overflow="hidden" bg="white">
                       <CodeMirror
                         value={editorText}
-                        onChange={(value): void => setEditorText(value)}
+                        onChange={(value): void => {
+                          setEditorText(value)
+                          setReport(null)
+                        }}
                         height="560px"
                         basicSetup={{
                           lineNumbers: true,
@@ -745,7 +749,7 @@ export function TaxRuleDialog({
                 void handleApply()
               }}
               isLoading={isApplying}
-              isDisabled={isLoading}
+              isDisabled={isLoading || isPreviewing || !canApplySchema}
             >
               変更を適用
             </Button>
