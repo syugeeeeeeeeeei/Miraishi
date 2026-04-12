@@ -114,12 +114,28 @@ yarn
 yarn dev
 ```
 
+### 品質チェック
+
+```bash
+yarn check
+```
+
 ### アプリケーションのビルド
 
 ```bash
-# Windows
-yarn build:win
+yarn build
+```
 
-# macOS
-yarn build:mac
+### Windows向けパッケージ（ローカル確認用）
+
+```bash
+yarn package:win
+```
+
+### Windows向けリリース（GitHub Releases公開）
+
+`.env` に `GH_TOKEN` を設定した状態で実行:
+
+```bash
+yarn release:win
 ```
